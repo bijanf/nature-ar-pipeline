@@ -1,14 +1,9 @@
 """Smoke tests for the four Nature-spec figure scripts.
 
-Each test calls a figure's ``plot``/``build_figure`` function with synthetic
-inputs, writes the result to a temp PDF, and verifies:
-
-1. The file exists and is non-empty.
-2. The PDF declares ``/FontFile2`` (TrueType embedded) somewhere — the
-   ``pdf.fonttype = 42`` setting from :mod:`src.figures._style` is the
-   reason this works.
-
-These run network-free in CI.
+Each test calls a figure's ``plot`` / ``build_figure`` function with synthetic
+inputs, writes the result to a temp PDF, and verifies it is a valid vector
+PDF (magic bytes + non-trivial size). The TrueType ``pdf.fonttype=42`` rule
+is verified independently from rcParams.
 """
 
 from __future__ import annotations
@@ -25,7 +20,7 @@ matplotlib = pytest.importorskip("matplotlib")
 from src.figures import (  # noqa: E402
     fig1_pipeline_schematic,
     fig2_validation,
-    fig3_ssp_shift,
+    fig3_trajectory,
     fig4_shap_drivers,
 )
 
@@ -64,32 +59,71 @@ def test_fig2_validation_renders(tmp_path: Path) -> None:
     _assert_vector_pdf(out)
 
 
-def test_fig3_ssp_shift_renders(tmp_path: Path) -> None:
+def test_fig3_trajectory_renders(tmp_path: Path) -> None:
+    # Observed: three periods with bootstrap bands.
+    observed = pd.DataFrame(
+        [
+            {
+                "period_name": "pre_sat_1940_1979",
+                "n_events": 220,
+                "mean_intensity": 320.0,
+                "mean_max_intensity": 410.0,
+                "mean_footprint_km2": 180000.0,
+                "mean_duration_h": 30.0,
+                "intensity_q05": 300.0,
+                "intensity_q95": 340.0,
+                "duration_q05": 27.0,
+                "duration_q95": 33.0,
+            },
+            {
+                "period_name": "modern_1980_2014",
+                "n_events": 245,
+                "mean_intensity": 360.0,
+                "mean_max_intensity": 470.0,
+                "mean_footprint_km2": 200000.0,
+                "mean_duration_h": 32.0,
+                "intensity_q05": 345.0,
+                "intensity_q95": 375.0,
+                "duration_q05": 30.0,
+                "duration_q95": 34.0,
+            },
+            {
+                "period_name": "recent_2015_2024",
+                "n_events": 275,
+                "mean_intensity": 395.0,
+                "mean_max_intensity": 510.0,
+                "mean_footprint_km2": 215000.0,
+                "mean_duration_h": 34.0,
+                "intensity_q05": 380.0,
+                "intensity_q95": 410.0,
+                "duration_q05": 31.0,
+                "duration_q95": 37.0,
+            },
+        ]
+    )
     rng = np.random.default_rng(1)
 
-    def synthetic(n: int, scale: float) -> pd.DataFrame:
+    def syn(n: int, scale: float) -> pd.DataFrame:
         return pd.DataFrame(
             {
-                "precip_pred_q05_mm": rng.uniform(0.0, scale * 0.5, n),
+                "precip_pred_q05_mm": rng.uniform(0, scale * 0.5, n),
                 "precip_pred_q50_mm": rng.uniform(scale * 0.5, scale, n),
                 "precip_pred_q95_mm": rng.uniform(scale, scale * 2.0, n),
             }
         )
 
-    per_scenario = {}
+    projected = {}
     for ssp, n, sc in [
-        ("ssp245", 200, 30.0),
-        ("ssp370", 240, 40.0),
-        ("ssp460", 210, 35.0),
-        ("ssp585", 280, 60.0),
+        ("ssp245", 250, 35.0),
+        ("ssp370", 290, 50.0),
+        ("ssp460", 260, 42.0),
+        ("ssp585", 330, 70.0),
     ]:
-        per_scenario[(ssp, "direct")] = synthetic(n, sc)
-        per_scenario[(ssp, "delta")] = synthetic(n - 20, sc * 0.9)
-
-    historical = pd.DataFrame({"precip_total_mm": rng.uniform(0.0, 30.0, 200)})
+        projected[(ssp, "direct")] = syn(n, sc)
+        projected[(ssp, "delta")] = syn(n - 20, sc * 0.85)
 
     out = tmp_path / "fig3.pdf"
-    fig = fig3_ssp_shift.plot(per_scenario, historical)
+    fig = fig3_trajectory.plot(observed, projected)
     fig.savefig(out)
     plt.close(fig)
     _assert_vector_pdf(out)
@@ -117,7 +151,6 @@ def test_fig4_shap_drivers_renders(tmp_path: Path) -> None:
 
 
 def test_pdf_fonttype_is_truetype() -> None:
-    # Independent of any figure render: applying the style mounts fonttype=42.
     from src.figures._style import apply_nature_style
 
     apply_nature_style()
