@@ -132,19 +132,31 @@ def test_fig3_trajectory_renders(tmp_path: Path) -> None:
 def test_fig4_shap_drivers_renders(tmp_path: Path) -> None:
     bands = ["south_25_35N", "central_35_45N", "north_45_60N"]
     rng = np.random.default_rng(2)
-    per_ssp = {}
-    for ssp in ("ssp245", "ssp370", "ssp460", "ssp585"):
-        per_ssp[ssp] = pd.DataFrame(
+
+    def synth_table(thermo_scale: float) -> pd.DataFrame:
+        return pd.DataFrame(
             {
-                "thermodynamic": rng.uniform(0.5, 2.0, size=len(bands)),
+                "thermodynamic": rng.uniform(0.5, 2.0, size=len(bands)) * thermo_scale,
                 "dynamic": rng.uniform(0.3, 1.5, size=len(bands)),
                 "other": rng.uniform(0.05, 0.4, size=len(bands)),
             },
             index=bands,
         )
 
+    observed = {
+        "pre_sat_1940_1979": synth_table(0.85),
+        "modern_1980_2014": synth_table(1.0),
+        "recent_2015_2024": synth_table(1.15),
+    }
+    projected = {
+        "ssp245": synth_table(1.10),
+        "ssp370": synth_table(1.25),
+        "ssp460": synth_table(1.20),
+        "ssp585": synth_table(1.45),
+    }
+
     out = tmp_path / "fig4.pdf"
-    fig = fig4_shap_drivers.plot(per_ssp)
+    fig = fig4_shap_drivers.plot(observed, projected)
     fig.savefig(out)
     plt.close(fig)
     _assert_vector_pdf(out)

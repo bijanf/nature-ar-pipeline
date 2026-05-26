@@ -54,13 +54,15 @@ from src import config
 _KM_PER_DEG_LAT = 111.0
 
 
-def extract_events(
+def extract_events_with_labels(
     intensity: xr.DataArray,
     land_sea_mask: xr.DataArray | None = None,
     threshold: float = config.STAGE1_EVENT_THRESHOLD,
-) -> pd.DataFrame:
-    """Threshold + 3-D label + per-event aggregate. Returns a DataFrame indexed
-    on a synthetic ``event_id``."""
+) -> tuple[pd.DataFrame, np.ndarray]:
+    """Same contract as :func:`extract_events` but also returns the integer
+    (time, lat, lon) label cube. Used by :mod:`src.features.event_features`
+    so the per-event physics-feature reduction reuses the same labelling — no
+    re-threshold, no drift in event identity."""
     lat_name = "latitude" if "latitude" in intensity.coords else "lat"
     lon_name = "longitude" if "longitude" in intensity.coords else "lon"
 
@@ -71,7 +73,7 @@ def extract_events(
     structure = np.ones((3, 3, 3), dtype=bool)
     labels, n_events = ndi.label(binary, structure=structure)
     if n_events == 0:
-        return _empty_events_frame()
+        return _empty_events_frame(), labels
 
     times = pd.to_datetime(intensity["time"].to_numpy())
     lats = intensity[lat_name].to_numpy().astype("float64")
@@ -137,7 +139,17 @@ def extract_events(
             }
         )
 
-    return pd.DataFrame.from_records(records)
+    return pd.DataFrame.from_records(records), labels
+
+
+def extract_events(
+    intensity: xr.DataArray,
+    land_sea_mask: xr.DataArray | None = None,
+    threshold: float = config.STAGE1_EVENT_THRESHOLD,
+) -> pd.DataFrame:
+    """Threshold + 3-D label + per-event aggregate. Returns a DataFrame indexed
+    on a synthetic ``event_id``."""
+    return extract_events_with_labels(intensity, land_sea_mask, threshold)[0]
 
 
 def _empty_events_frame() -> pd.DataFrame:

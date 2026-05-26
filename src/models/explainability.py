@@ -35,6 +35,7 @@ import argparse
 from pathlib import Path
 
 import lightgbm as lgb
+import numpy as np
 import pandas as pd
 import shap
 
@@ -60,12 +61,26 @@ def compute_shap(booster: lgb.Booster, feature_rows: pd.DataFrame) -> pd.DataFra
     return pd.DataFrame(values, columns=list(_FEATURES), index=feature_rows.index)
 
 
+def compute_shap_mean_across_folds(
+    boosters: list[lgb.Booster], feature_rows: pd.DataFrame
+) -> pd.DataFrame:
+    """Mean of per-fold absolute SHAP values.
+
+    Mirrors how :func:`src.models.stage1_ar_emulator.predict_field` aggregates
+    fold predictions: each spatial CV fold sees a different held-out region,
+    so attribution averaged across folds is robust to per-fold quirks. We
+    take the mean of |SHAP| rather than signed SHAP since the downstream
+    bucket sum already collapses sign.
+    """
+    stacked = np.stack([np.abs(compute_shap(b, feature_rows).to_numpy()) for b in boosters], axis=0)
+    return pd.DataFrame(stacked.mean(axis=0), columns=list(_FEATURES), index=feature_rows.index)
+
+
 def bucket_attribution(shap_df: pd.DataFrame) -> pd.DataFrame:
     """Sum SHAP per row into thermodynamic / dynamic / other buckets.
 
-    Uses mean of absolute SHAP within each bucket — the convention for
-    relative-importance attribution. Signed sums (which can cancel) are kept
-    out of the headline figure on purpose.
+    Accepts either raw signed SHAP (collapses sign via ``.abs()``) or already-
+    absolute SHAP (no-op under ``.abs()``). Both call sites work.
     """
     return pd.DataFrame(
         {
@@ -104,27 +119,43 @@ def write_attribution(table: pd.DataFrame, name: str = "shap_attribution") -> Pa
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--booster",
+        "--boosters",
         type=str,
+        nargs="+",
         required=True,
-        help="Path to a Stage 1 fold booster (e.g. data/cache/stage1_models/fold_0_seed42.txt).",
+        help=(
+            "Paths to Stage 1 fold boosters (one per spatial-block CV fold). "
+            "Attribution is the mean of |SHAP| across folds."
+        ),
     )
     parser.add_argument(
         "--events",
         type=str,
         required=True,
         help=(
-            "Per-event feature rows with the Stage-1 feature set + a landfall_lat "
-            "column (typically the CMIP6 future events with their mean physics features)."
+            "Per-event feature rows with the Stage-1 feature set + landfall_lat. "
+            "Either CMIP6 events (cmip6_events_*.parquet) or observational "
+            "events (observational_events.parquet)."
+        ),
+    )
+    parser.add_argument(
+        "--period",
+        type=str,
+        default=None,
+        help=(
+            "When --events is observational_events.parquet, restrict to one "
+            "of config.OBSERVATIONAL_PERIODS by name (e.g. modern_1980_2014)."
         ),
     )
     parser.add_argument("--name", type=str, default="shap_attribution")
     args = parser.parse_args()
 
-    booster = lgb.Booster(model_file=args.booster)
+    boosters = [lgb.Booster(model_file=p) for p in args.boosters]
     events = pd.read_parquet(args.events).dropna(subset=["landfall_lat"])
+    if args.period is not None:
+        events = events.loc[events["period"] == args.period].reset_index(drop=True)
 
-    shap_vals = compute_shap(booster, events)
+    shap_vals = compute_shap_mean_across_folds(boosters, events)
     buckets = bucket_attribution(shap_vals)
     table = aggregate_by_landfall_band(buckets, events["landfall_lat"])
     out = write_attribution(table, name=args.name)

@@ -257,7 +257,7 @@ def run_direct(
     features = _cmip6_features(catalog, source_id, experiment_id, period)
     intensity = predict_intensity(stage1_boosters, features)
     return _events_to_stage2(
-        intensity, stage2_boosters, era5_topo, source_id, experiment_id, "direct"
+        intensity, features, stage2_boosters, era5_topo, source_id, experiment_id, "direct"
     )
 
 
@@ -285,24 +285,33 @@ def run_delta(
 
     intensity = predict_intensity(stage1_boosters, perturbed)
     return _events_to_stage2(
-        intensity, stage2_boosters, era5_topo, source_id, experiment_id, "delta"
+        intensity, perturbed, stage2_boosters, era5_topo, source_id, experiment_id, "delta"
     )
 
 
 def _events_to_stage2(
     intensity: xr.DataArray,
+    feature_cube: xr.Dataset,
     stage2_boosters: list[dict[float, lgb.Booster]],
     era5_topo: xr.Dataset,
     source_id: str,
     experiment_id: str,
     mode: str,
 ) -> pd.DataFrame:
-    """Common tail: intensity field -> events -> per-event features -> Stage 2 quantile predictions."""
-    events = event_post.extract_events(
+    """Common tail: intensity field -> events -> per-event topo + Stage-1 physics
+    features (for downstream SHAP) -> Stage 2 quantile predictions."""
+    from src.features import event_features
+
+    events, labels = event_post.extract_events_with_labels(
         intensity, land_sea_mask=era5_topo["land_sea_mask"], threshold=config.STAGE1_EVENT_THRESHOLD
     )
     if events.empty:
         return events.assign(source_id=source_id, experiment_id=experiment_id, mode=mode)
+
+    # Materialise the Stage-1 physics features once over the inference window
+    # and attach footprint×duration means per event. Required by Phase 5d SHAP.
+    physics_cube = feature_cube[list(event_features._PHYSICS_FEATURES)].compute()
+    events = event_features.attach_features(events, labels, physics_cube)
 
     topo_feats = topography.event_topo_features(events, era5_topo, intensity)
     dataset = events.merge(topo_feats, on="event_id")

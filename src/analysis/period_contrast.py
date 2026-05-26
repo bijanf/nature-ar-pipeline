@@ -40,7 +40,7 @@ import pandas as pd
 import xarray as xr
 
 from src import config
-from src.features import ar_detection, physics_pipeline
+from src.features import ar_detection, event_features, physics_pipeline
 from src.models import event_post
 
 _BOOT_N = 1000
@@ -81,12 +81,18 @@ def _events_for_period(
     mask_lazy = ar_detection.compute_ar_mask(feats["ivt"], feats["ivt_u"], feats["ivt_v"], clim)
     intensity = (mask_lazy.astype("float32") * feats["ivt"]).rename("ar_intensity")
 
-    intensity = intensity.compute()
-    events = event_post.extract_events(
-        intensity,
+    # One materialisation pass over the period: intensity + the six physics
+    # features SHAP will consume. Without this, Phase 5d attribution against
+    # the observational record has no row-per-event to operate on.
+    feats_for_events = feats[list(event_features._PHYSICS_FEATURES)]
+    materialised = xr.merge([intensity, feats_for_events]).compute()
+
+    events, labels = event_post.extract_events_with_labels(
+        materialised["ar_intensity"],
         land_sea_mask=era5_topo["land_sea_mask"],
         threshold=config.STAGE1_EVENT_THRESHOLD,
     )
+    events = event_features.attach_features(events, labels, materialised)
     events.insert(0, "period", period_name)
     return events
 
