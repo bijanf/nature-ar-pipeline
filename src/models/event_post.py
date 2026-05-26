@@ -21,6 +21,8 @@ Pipeline
    ``duration_hours``    time span from first to last 6-hourly slice + 6 h
    ``landfall_lat``      mean latitude of *land* pixels in the event (NaN if
                          none — i.e. an over-ocean AR)
+   ``landfall_lon``      mean longitude of land pixels in the event (NaN if
+                         the event has no land pixels)
    ``start_time``        first timestamp in the event
    ``end_time``          last timestamp in the event
    ====================  ======================================================
@@ -110,14 +112,16 @@ def extract_events(
         end_time = pd.Timestamp(times[time_idx[-1]])
         duration_h = float((end_time - start_time).total_seconds() / 3600.0 + 6.0)
 
-        # Landfall lat: mean lat of the land pixels inside the footprint.
-        # 'land' is (1, lat, lon); footprint is (lat, lon).
+        # Landfall lat/lon: mean coordinates of the land pixels inside the
+        # footprint. 'land' is (1, lat, lon); footprint is (lat, lon).
         land_in_footprint = (land[0] > 0.5) & footprint
         if land_in_footprint.any():
-            i_land, _ = np.where(land_in_footprint)
+            i_land, j_land = np.where(land_in_footprint)
             landfall_lat = float(lats[i_land].mean())
+            landfall_lon = float(lons[j_land].mean())
         else:
             landfall_lat = float("nan")
+            landfall_lon = float("nan")
 
         records.append(
             {
@@ -129,6 +133,7 @@ def extract_events(
                 "max_intensity": float(intensities.max()),
                 "footprint_area_km2": area_km2,
                 "landfall_lat": landfall_lat,
+                "landfall_lon": landfall_lon,
             }
         )
 
@@ -146,6 +151,7 @@ def _empty_events_frame() -> pd.DataFrame:
             "max_intensity": pd.Series(dtype="float64"),
             "footprint_area_km2": pd.Series(dtype="float64"),
             "landfall_lat": pd.Series(dtype="float64"),
+            "landfall_lon": pd.Series(dtype="float64"),
         }
     )
 

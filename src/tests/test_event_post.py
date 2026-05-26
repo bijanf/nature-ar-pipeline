@@ -86,5 +86,24 @@ def test_landfall_lat_uses_land_sea_mask() -> None:
     df = extract_events(_intensity_cube(cube), land_sea_mask=lsm_da, threshold=100.0)
     assert len(df) == 1
     # Event sits in lat indices 5-14, which are below the land threshold ->
-    # there are no land pixels in the footprint, landfall_lat must be NaN.
+    # there are no land pixels in the footprint, both landfall coords NaN.
     assert np.isnan(df.iloc[0]["landfall_lat"])
+    assert np.isnan(df.iloc[0]["landfall_lon"])
+
+
+def test_landfall_coords_populated_when_land_overlaps() -> None:
+    cube = np.zeros((_TIMES.size, _LATS.size, _LONS.size), dtype="float32")
+    # Event covers a 10x10 block centred on lat-idx 25, lon-idx 25.
+    cube[2:4, 20:30, 20:30] = 400.0
+
+    # Land mask covers the same block; ocean elsewhere.
+    lsm = np.zeros((_LATS.size, _LONS.size), dtype="float32")
+    lsm[20:30, 20:30] = 1.0
+    lsm_da = xr.DataArray(
+        lsm, dims=("latitude", "longitude"), coords={"latitude": _LATS, "longitude": _LONS}
+    )
+
+    df = extract_events(_intensity_cube(cube), land_sea_mask=lsm_da, threshold=100.0)
+    row = df.iloc[0]
+    assert row["landfall_lat"] == pytest.approx(float(_LATS[20:30].mean()), abs=1e-4)
+    assert row["landfall_lon"] == pytest.approx(float(_LONS[20:30].mean()), abs=1e-4)
