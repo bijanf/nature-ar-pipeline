@@ -1,0 +1,54 @@
+[project]
+name = "nature-ar-pipeline"
+version = "0.1.0"
+description = "Physically constrained two-stage ML pipeline for Atmospheric Rivers and cascading multi-hazards under SSP5-8.5."
+authors = [{ name = "Bijan Fallah", email = "fallah@pik-potsdam.de" }]
+requires-python = ">=3.11"
+readme = "README.md"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src"]
+exclude = ["notebooks/**", "data/**"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "UP",  # pyupgrade
+    "SIM", # flake8-simplify
+    "NPY", # numpy-specific
+    "PD",  # pandas-vet
+    "RUF", # ruff-specific
+]
+ignore = [
+    "E501",  # line length — formatter handles
+    "B008",  # function-call default arg — common in xarray APIs
+]
+
+[tool.ruff.lint.per-file-ignores]
+"src/tests/**" = ["B", "PD"]
+"src/features/physics_pipeline.py" = ["E741"]  # `l` for level dim is conventional
+
+[tool.ruff.format]
+quote-style = "double"
+docstring-code-format = true
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+testpaths = ["src/tests"]
+addopts = "-ra --strict-markers --strict-config"
+markers = [
+    "slow: tests taking >10 s",
+    "network: tests that stream from Pangeo / GCS",
+]
+
+[tool.mypy]
+python_version = "3.11"
+warn_unused_configs = true
+ignore_missing_imports = true
+exclude = ["notebooks/", "data/"]

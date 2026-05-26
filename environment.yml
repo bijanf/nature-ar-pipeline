@@ -1,0 +1,29 @@
+name: nature-ar-pipeline
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - xarray
+  - dask
+  - zarr
+  - fsspec
+  - s3fs
+  - gcsfs
+  - metpy
+  - lightgbm
+  - shap
+  - scikit-learn
+  - scipy
+  - intake-esm
+  - pyarrow
+  - matplotlib
+  - xesmf
+  - esmpy
+  - jupyterlab
+  - ipykernel
+  - pip
+  - pip:
+      - ruff
+      - pytest
+      - pytest-cov
+      - mypy

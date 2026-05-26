@@ -1,0 +1,7 @@
+-r requirements.txt
+ruff
+pytest
+pytest-cov
+mypy
+nbconvert
+ipykernel

@@ -1,0 +1,15 @@
+xarray[complete]
+dask
+zarr
+fsspec
+s3fs
+gcsfs
+metpy
+lightgbm
+shap
+scikit-learn
+scipy
+intake-esm
+pyarrow
+matplotlib
+# NB: xesmf + esmpy are conda-only; see environment.yml for the conda install.

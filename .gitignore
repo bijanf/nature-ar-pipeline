@@ -1,0 +1,76 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+*.egg
+
+# Virtual envs
+.venv/
+venv/
+env/
+ENV/
+
+# Notebooks
+.ipynb_checkpoints/
+*-checkpoint.ipynb
+
+# Testing
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.cache/
+
+# Type checking
+.mypy_cache/
+.pyright/
+.ruff_cache/
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Project-specific: derived ML/data artifacts (raw data never lands here anyway — streamed)
+data/cache/
+data/*.zarr/
+data/*.nc
+data/*.parquet
+data/*.h5
+data/*.npz
+
+# Trained models
+*.txt.lgb
+*.pkl
+*.joblib
+
+# Logs and runs
+*.log
+logs/
+runs/
+wandb/
+
+# Secrets
+.env
+.env.local
+*.pem
+*.key
+credentials*.json
+
+# Raster previews (Nature submission requires vector PDFs — keep PDFs, ignore PNGs)
+figures/*.png
+figures/*.jpg
+figures/*.jpeg
+!figures/.gitkeep
+
+# OS / misc
+Thumbs.db
