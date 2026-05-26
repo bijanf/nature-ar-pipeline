@@ -57,10 +57,32 @@ ERA5_ZARR_URL = "gs://gcp-public-data-arco-era5/ar/full_37-1h-0p25deg-chunk-1.za
 
 CMIP6_CATALOG_URL = "https://storage.googleapis.com/cmip6/pangeo-cmip6.json"
 
-# Default SSP5-8.5 query against the Pangeo CMIP6 catalog. Resolved at Phase 3.
-CMIP6_QUERY = {
+# Inference scenario set.
+#
+# The original directive specified SSP5-8.5 only, but the CMIP7 design protocol
+# has effectively deprecated SSP5-8.5 as a headline (now treated as an implausible
+# upper bound). For a 2026 Nature submission the defensible framing is:
+#
+#   * SSP2-4.5  — middle-of-road baseline (stated current policies)
+#   * SSP3-7.0  — CMIP7-aligned high-end plausible; **headline scenario**
+#   * SSP4-6.0  — "inequality" pathway, asymmetric regional forcing; tests
+#                 whether the ML emulator generalises across qualitatively
+#                 different forcing structures, not just along the SSP5-8.5 axis
+#   * SSP5-8.5  — upper-bound stress test, retained for back-comparison with
+#                 prior AR-projection literature (Espinoza et al. 2018,
+#                 Payne et al. 2020, etc.)
+#
+# ``historical`` is always included implicitly — it provides the baseline for
+# the delta-change inference protocol.
+CMIP6_EXPERIMENTS = ("ssp245", "ssp370", "ssp460", "ssp585")
+HEADLINE_EXPERIMENT = "ssp370"
+
+# Base Pangeo catalog query; ``experiment_id`` is set per-call by the inference
+# loop. SSP4-6.0 in particular has uneven model coverage on Pangeo — the
+# CMIP6 inference module is responsible for falling back to a sibling
+# realisation if the configured ``source_id`` lacks ssp460 at 6hrLev.
+CMIP6_QUERY_BASE = {
     "activity_id": "ScenarioMIP",
-    "experiment_id": "ssp585",
     "table_id": "6hrLev",
     "variable_id": ["ua", "va", "ta", "hus", "ps"],
     "source_id": "MPI-ESM1-2-HR",

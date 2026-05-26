@@ -72,8 +72,10 @@ figures/*.jpg
 figures/*.jpeg
 !figures/.gitkeep
 
-# Claude Code session artifacts
+# Local-only session artifacts and project briefs
 .claude/
+CLAUDE.md
+nature_directive.md
 
 # OS / misc
 Thumbs.db
