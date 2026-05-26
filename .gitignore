@@ -32,9 +32,12 @@ htmlcov/
 .pyright/
 .ruff_cache/
 
-# Editors
+# Editor and tooling caches
 .vscode/
 .idea/
+.cursor/
+.aider/
+.claude/
 *.swp
 *.swo
 *~
@@ -72,8 +75,7 @@ figures/*.jpg
 figures/*.jpeg
 !figures/.gitkeep
 
-# Local-only session artifacts and project briefs
-.claude/
+# Local-only notes
 CLAUDE.md
 nature_directive.md
 
