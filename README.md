@@ -4,83 +4,88 @@
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 
-A physically constrained, two-stage machine-learning pipeline that emulates
-Atmospheric Rivers (ARs) and projects their cascading hydrometeorological
-hazards over the US West Coast under SSP5-8.5. Accompanies a manuscript in
-preparation for a *Nature* family journal.
+US-West-Coast atmospheric rivers (ARs), three observational periods and four
+projected SSP scenarios on one trajectory. Accompanies a manuscript in
+preparation for a *Nature*-family journal.
 
 ---
 
-## Why this exists
+## The claim, in one paragraph
 
-Atmospheric Rivers deliver up to half of US West Coast cool-season precipitation
-and an outsized share of flood-day hazard. Projecting how ARs and their
-compound hazards shift under end-of-century warming demands a model that:
+The ERA5 reanalysis record (1940–2024) already shows AR intensification on
+the US West Coast across three observational periods — pre-satellite
+(1940–1979), modern (1980–2014), and recent (2015–2024). The same diagnostic,
+extended through a physically constrained ML emulator into four SSP-2070-2099
+futures (SSP2-4.5, SSP3-7.0, SSP4-6.0, SSP5-8.5), projects a further
+intensification consistent with the observed trajectory. Driver attribution
+via SHAP indicates that **thermodynamic moisture amplification** (rising θ_e
+at 850 hPa and column IVT) dominates both the observed contrast and the
+projected one, with **dynamic** (PV at 250 hPa, Eady growth) contributions
+varying by landfall band and SSP.
 
-1. **respects the underlying dynamics** — vertically integrated moisture
-   transport, upper-level synoptic forcing, baroclinic energetics;
-2. **can extrapolate** into thermodynamic regimes unseen during training,
-   because SSP5-8.5 mid-latitude moisture loadings exceed any 20th-century
-   reanalysis;
-3. **quantifies uncertainty** for the downstream cascading hazard.
+The ML's role is to *extend* the observed trajectory, not to lead it. A
+reviewer who distrusts the ML can still read the observed shift from the
+left half of the headline trajectory figure.
 
-We address (1) by deriving Holton-dynamics features from ERA5 with
-[`MetPy`](https://unidata.github.io/MetPy/), (2) by using `LightGBM` with
-`linear_tree=True` leaves that admit linear extrapolation along a
-Clausius-Clapeyron-scaled IVT axis, and (3) by quantile regression at
-α ∈ {0.05, 0.50, 0.95} on AR-event total precipitation.
+## Observational + projected periods
+
+| period | window | role | data source |
+|---|---|---|---|
+| Pre-satellite | 1940–1979 | climatological reference | ARCO-ERA5 (back-extended; reduced obs constraint) |
+| Modern | 1980–2014 | well-observed warming | ARCO-ERA5; ML training window |
+| Recent | 2015–2024 | recent decade | ARCO-ERA5; ML temporal-generalization holdout |
+| SSP2-4.5 | 2070–2099 | middle-of-road | CMIP6 (Pangeo, conservative regrid) |
+| SSP3-7.0 | 2070–2099 | CMIP7-aligned headline | CMIP6 |
+| SSP4-6.0 | 2070–2099 | inequality / asymmetric forcing | CMIP6 |
+| SSP5-8.5 | 2070–2099 | upper-bound stress test | CMIP6 |
 
 ## Architecture
 
 ```
-ARCO-ERA5  (Pangeo Zarr, streamed)
+ARCO-ERA5 1940-2024  (Pangeo Zarr, streamed)
      │
      ▼
 src/features/physics_pipeline.py        IVT, θ_e (850 hPa), QG-PV (250 hPa), Eady σ_BI
      │
-     ▼
-src/features/ar_detection.py            Guan & Waliser (2015) AR mask, in-repo
+     ├─► src/analysis/period_contrast.py     ← observed shift across three periods
+     │                                        (period-internal GW climatology so
+     │                                         threshold drift doesn't confound
+     │                                         genuine intensification)
      │
      ▼
-src/models/stage1_ar_emulator.py        LightGBM regressor, linear_tree=True
+src/features/ar_detection.py            Guan & Waliser (2015) AR mask
+     │
+     ▼
+src/models/stage1_ar_emulator.py        LightGBM, linear_tree=True
      │                                  target = GW_mask × IVT
      ▼
 src/models/event_post.py                threshold + scipy.ndimage.label → events
      │
      ▼
-src/models/stage2_cascade.py            LightGBM quantile regression, α = 0.05 / 0.50 / 0.95
+src/models/stage2_cascade.py            LightGBM quantile regression α=0.05/0.50/0.95
      │                                  target = AR-event total precipitation
      ▼
-src/models/explainability.py            SHAP θ_e (thermodynamic) vs PV (dynamic) attribution
+src/models/explainability.py            SHAP θ_e vs PV per landfall band,
+                                        for observed AND projected contrasts
      ▲
      │
-CMIP6 SSP5-8.5 (Pangeo) ── xesmf conservative regrid ── direct & delta-change inference
+CMIP6 SSP2-4.5 / SSP3-7.0 / SSP4-6.0 / SSP5-8.5 (2070-2099)
+     ── conservative regrid (xesmf) ── direct & delta-change inference
 ```
 
-## Domain & resolution
+## Domain
 
-| | |
-|--|--|
-| Region | 25 °N – 60 °N, 210 °E – 250 °E (US West Coast landfall corridor) |
-| Native resolution | 0.25° |
-| Cadence | 6-hourly |
-| Pressure levels | 850 / 500 / 250 hPa |
+US-West-Coast landfall corridor: 25 °N – 60 °N, 210 °E – 250 °E. Native
+0.25° resolution, 6-hourly cadence, pressure-level fields at 100/250/500/700/850/1000 hPa.
 
-## Train / holdout / inference split
+## Spatial cross-validation (Stages 1 + 2)
 
-| set       | period     | source                       |
-|-----------|------------|------------------------------|
-| train     | 1980 – 2014 | ARCO-ERA5 (Pangeo)           |
-| holdout   | 2015 – 2024 | ARCO-ERA5 (Pangeo)           |
-| inference | 2070 – 2099 | CMIP6 SSP5-8.5 (Pangeo)      |
-
-Spatial cross-validation: **5° × 5° blocks, K = 5, 1° outer buffer,
-year-blocked, stratified on per-block AR climatology.**
+5° × 5° blocks, K = 5, 1° outer buffer, year-blocked, stratified on per-block
+AR climatology.
 
 ## Install
 
-The full pipeline depends on `xesmf` + `esmpy`, both of which are conda-only.
-We recommend the conda environment:
+`xesmf` + `esmpy` are conda-only; use the conda environment for end-to-end:
 
 ```bash
 git clone git@github.com:bijanf/nature-ar-pipeline.git
@@ -89,37 +94,49 @@ conda env create -f environment.yml
 conda activate nature-ar-pipeline
 ```
 
-A pure-pip install works for everything except CMIP6 inference:
+Pure pip works for everything except CMIP6 inference (no xesmf):
 
 ```bash
 pip install -r requirements.txt
-pip install -r requirements-dev.txt   # for lint + test tooling
+pip install -r requirements-dev.txt   # lint + tests
 ```
 
 ## Reproduce
 
 ```bash
-# 1. Build the training set (streams ERA5 from Pangeo)
+# 1. Observed shift across the three ERA5 periods (the empirical core).
+python -m src.analysis.period_contrast
+
+# 2. Build the Stage 1 training set on the modern period.
 python -m src.data.era5_train_assembly --period 1980-2014
 
-# 2. Train Stage 1 with 5-fold spatial-block CV
+# 3. Train Stage 1 with spatial-block CV.
 python -m src.models.stage1_ar_emulator --cv
 
-# 3. Build the event-level dataset for Stage 2
-python -m src.data.event_dataset
+# 4. Build the event-level Stage 2 dataset.
+python -m src.data.event_dataset --intensity <path-to-intensity>.zarr
 
-# 4. Train Stage 2 (quantile regression)
+# 5. Train Stage 2 quantile regression.
 python -m src.models.stage2_cascade --cv
 
-# 5. CMIP6 SSP5-8.5 inference (direct headline + delta robustness)
-python -m src.inference.cmip6_apply --source MPI-ESM1-2-HR --mode direct
-python -m src.inference.cmip6_apply --source MPI-ESM1-2-HR --mode delta
+# 6. CMIP6 four-SSP inference (direct + delta).
+for ssp in ssp245 ssp370 ssp460 ssp585; do
+    for mode in direct delta; do
+        python -m src.inference.cmip6_apply --source MPI-ESM1-2-HR --experiment $ssp --mode $mode
+    done
+done
 
-# 6. Figures (Nature spec: vector PDF, 6–7 pt Helvetica, 88 / 180 mm widths)
-python -m src.figures.fig3_ssp585_shift
+# 7. SHAP attribution (per SSP and for the observed contrast).
+python -m src.models.explainability \
+    --booster data/cache/stage1_models/fold_0_seed42.txt \
+    --events data/cache/cmip6_events_MPI-ESM1-2-HR_ssp370_direct.parquet \
+    --name shap_attribution_ssp370
+
+# 8. Headline figure: observed → projected trajectory.
+python -m src.figures.fig3_trajectory
 ```
 
-A reviewer-facing end-to-end demo runs the full pipeline on a single year:
+Reviewer-facing one-month demo:
 
 ```bash
 jupyter nbconvert --execute notebooks/e2e_demo.ipynb
@@ -127,52 +144,68 @@ jupyter nbconvert --execute notebooks/e2e_demo.ipynb
 
 ## Engineering invariants
 
-These are non-negotiable. They protect the validity of the projections and the
-reproducibility of the results.
-
-- **Streaming.** ARCO-ERA5 and CMIP6 are streamed from Pangeo via
+- **Streaming.** ERA5 and CMIP6 are streamed from Pangeo via
   `xarray.open_zarr`. Raw data never lands on disk.
 - **Lazy graph.** Every operation produces a Dask graph until the final
-  ML-training or Parquet-write boundary. No `.compute()`, `.values`,
-  `.to_numpy()` upstream of those points.
-- **Conservative regridding.** CMIP6 → ERA5 grid via `xesmf` conservative
+  ML-training or Parquet-write boundary.
+- **Period-internal GW climatology.** Each observational period uses its
+  *own* 85th-percentile IVT climatology, so trends in IVT don't artificially
+  erode the AR detection threshold.
+- **Conservative regridding.** CMIP6 → ERA5 via `xesmf` conservative
   regridder preserves column integrals of vapor transport.
-- **Reproducibility.** Every trained model and intermediate artifact is cached
-  to `data/cache/` with period, model id, and random seed embedded in the
-  filename. The pipeline is idempotent end-to-end.
+- **Reproducibility.** Every trained model and intermediate artifact is
+  cached to `data/cache/` with period, model id, and random seed embedded
+  in the filename.
+- **ML never trains on pre-satellite data.** The 1940–1979 window is
+  *analysis-only*; the ML sees only 1980–2014.
 
 ## Layout
 
 ```
 src/
-  config.py                  bbox, levels, Zarr URLs, ERA5 variable map
+  config.py                  bbox, levels, observational + SSP periods, Zarr URLs
   features/
     physics_pipeline.py      Holton-dynamics features
-    ar_detection.py          Guan-Waliser AR mask
+    ar_detection.py          Guan-Waliser AR mask, period-internal climatology
     topography.py            event-level elevation aggregates
+  analysis/
+    period_contrast.py       per-observational-period event statistics with bootstrap CIs
   data/
-    era5_train_assembly.py   stratified training Parquet
-    event_dataset.py         Stage-2 event dataset
-    cache.py                 Zarr/Parquet helpers
+    era5_train_assembly.py   stratified Stage 1 training Parquet
+    event_dataset.py         Stage 2 event dataset
   models/
-    stage1_ar_emulator.py    LightGBM regressor
-    event_post.py            scipy.ndimage.label
+    stage1_ar_emulator.py    LightGBM Stage 1 regressor
+    event_post.py            scipy.ndimage.label → discrete events
     stage2_cascade.py        LightGBM quantile regression
-    explainability.py        SHAP attribution
+    explainability.py        SHAP θ_e vs PV attribution
   inference/
-    cmip6_apply.py           direct + delta CMIP6 protocols
+    cmip6_apply.py           four-SSP direct + delta inference
   figures/                   Nature-spec vector PDFs
-  tests/                     pytest (network-free)
+  tests/                     pytest (64 tests, network-free)
 notebooks/
-  e2e_demo.ipynb             reviewer-facing demo
+  e2e_demo.ipynb             reviewer-facing one-month walkthrough
 ```
 
-## Continuous integration
+## CI
 
-GitHub Actions runs `ruff check`, `ruff format --check`, and `pytest`
-(network-free tests only) on every push and pull request — see
-[`.github/workflows/ci.yml`](.github/workflows/ci.yml). Network-bound and slow
-tests live behind the `network` and `slow` markers and are skipped in CI.
+GitHub Actions runs Ruff (lint + format) and Pytest (network-free, fast) on
+every push and pull request. Network-bound and slow tests live behind the
+`network` and `slow` markers and are skipped in CI.
+
+## Caveats (must surface in the manuscript)
+
+- **ERA5 1940–1978 back-extension** (HRES + ERA5-BE) has reduced
+  observational constraint, particularly on moisture. We treat the pre-
+  satellite period as a *climatological reference*: useful for trend
+  detection at the basin scale, inadequate for individual-event validation.
+  The ML never trains on pre-satellite data.
+- **CMIP6 SSP4-6.0 model coverage on Pangeo at 6hrPlevPt is uneven.**
+  The inference module raises `LookupError` (rather than silently
+  substituting a different model) when the requested combination is absent,
+  so the orchestration can tag missing scenarios honestly.
+- **`linear_tree=True` extrapolation** is the load-bearing extrapolation
+  argument for Stage 1; both `direct` and `delta` CMIP6 protocols are
+  reported, and their agreement is itself a robustness check.
 
 ## License & data attribution
 
@@ -182,5 +215,5 @@ CMIP6 model output © respective modelling groups, licensed per ESGF terms.
 
 ## Citation
 
-Manuscript in preparation (Fallah et al., 2026). If you use this code prior to
-publication, please open an issue or contact `fallah@pik-potsdam.de`.
+Manuscript in preparation (Fallah et al., 2026). If you use this code prior
+to publication, please open an issue or contact `fallah@pik-potsdam.de`.
