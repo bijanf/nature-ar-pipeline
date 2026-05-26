@@ -18,11 +18,32 @@ DATA_DIR = PROJECT_ROOT / "data"
 CACHE_DIR = DATA_DIR / "cache"
 
 # -----------------------------------------------------------------------------
-# Training / holdout / inference windows.
+# Observational periods (full ERA5 record back to 1940) and ML windows.
+#
+# Story A framing: the manuscript reports three observational periods plus
+# four projected SSPs on a single trajectory. Pre-satellite ERA5 (1940-1979)
+# has reduced observational constraint, so it is *analysis-only* — the ML
+# pipeline never trains on it. The ML trains on MODERN (= TRAIN_PERIOD) and
+# generalises to RECENT (= HOLDOUT_PERIOD); the period-contrast analysis
+# (src.analysis.period_contrast) then reports observed shifts across all
+# three windows independent of the ML.
 # -----------------------------------------------------------------------------
-TRAIN_PERIOD = ("1980-01-01", "2014-12-31")
-HOLDOUT_PERIOD = ("2015-01-01", "2024-12-31")
-CMIP6_HIST_PERIOD = ("1980-01-01", "2014-12-31")
+PRE_SAT_PERIOD = ("1940-01-01", "1979-12-31")
+MODERN_PERIOD = ("1980-01-01", "2014-12-31")
+RECENT_PERIOD = ("2015-01-01", "2024-12-31")
+
+# Aliases preserved for downstream code that already calls these names.
+TRAIN_PERIOD = MODERN_PERIOD
+HOLDOUT_PERIOD = RECENT_PERIOD
+
+# Ordered observational periods for the trajectory figure.
+OBSERVATIONAL_PERIODS = (
+    ("pre_sat_1940_1979", PRE_SAT_PERIOD),
+    ("modern_1980_2014", MODERN_PERIOD),
+    ("recent_2015_2024", RECENT_PERIOD),
+)
+
+CMIP6_HIST_PERIOD = MODERN_PERIOD
 CMIP6_FUT_PERIOD = ("2070-01-01", "2099-12-31")
 
 # Sub-daily cadence at which Guan-Waliser is canonically applied and at which
