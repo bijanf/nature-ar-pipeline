@@ -105,6 +105,7 @@ def _to_long_dataframe(loaded: xr.Dataset, lat_name: str, lon_name: str) -> pd.D
     df["doy_sin"] = np.sin(2.0 * np.pi * doy / 365.25).astype("float32")
     df["doy_cos"] = np.cos(2.0 * np.pi * doy / 365.25).astype("float32")
     df["lat_deg"] = df[lat_name].astype("float32")
+    df["lon_deg"] = df[lon_name].astype("float32")
 
     return df
 

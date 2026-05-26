@@ -249,8 +249,6 @@ def train_cv(
     seed: int = config.RANDOM_SEED,
 ) -> tuple[list[lgb.Booster], list[dict[str, float]]]:
     """End-to-end CV: assign folds, train K boosters, return all of them plus per-fold metrics."""
-    df = df.copy()
-    df["lon_deg"] = df[_lon_column(df)].astype("float32")
     plan = assign_folds(df, n_folds=n_folds, block_deg=block_deg, seed=seed)
     boosters: list[lgb.Booster] = []
     metrics: list[dict[str, float]] = []
@@ -259,15 +257,6 @@ def train_cv(
         boosters.append(b)
         metrics.append({"fold": k, **m})
     return boosters, metrics
-
-
-def _lon_column(df: pd.DataFrame) -> str:
-    """The longitude column was written as either ``longitude`` or ``lon``
-    by the ARCO-ERA5 store — return whichever exists."""
-    for c in ("longitude", "lon"):
-        if c in df.columns:
-            return c
-    raise KeyError("no longitude column in dataframe")
 
 
 # =============================================================================

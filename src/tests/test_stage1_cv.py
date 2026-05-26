@@ -30,7 +30,7 @@ def _toy_frame(n: int = 5000, seed: int = 0) -> pd.DataFrame:
         {
             "time": times,
             "lat_deg": lats.astype("float32"),
-            "longitude": lons.astype("float32"),
+            "lon_deg": lons.astype("float32"),
             "ar_mask": ar_mask,
             "ar_intensity": np.where(ar_mask, rng.normal(500.0, 100.0, size=n), 0.0).astype(
                 "float32"
