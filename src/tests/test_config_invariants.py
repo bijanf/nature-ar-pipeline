@@ -50,7 +50,15 @@ def test_chunks_keep_vertical_and_spatial_whole() -> None:
     assert chunks["longitude"] == -1
 
 
-def test_cmip6_query_pins_ssp585() -> None:
-    assert config.CMIP6_QUERY["experiment_id"] == "ssp585"
-    assert "ua" in config.CMIP6_QUERY["variable_id"]
-    assert "va" in config.CMIP6_QUERY["variable_id"]
+def test_cmip6_query_base_carries_atmos_vars() -> None:
+    # The four-SSP inference set is enumerated in CMIP6_EXPERIMENTS; the
+    # CMIP6_QUERY_BASE has every field except experiment_id (set per-call).
+    assert "experiment_id" not in config.CMIP6_QUERY_BASE
+    assert "ua" in config.CMIP6_QUERY_BASE["variable_id"]
+    assert "va" in config.CMIP6_QUERY_BASE["variable_id"]
+
+
+def test_cmip6_experiments_cover_four_ssp_ladder() -> None:
+    assert set(config.CMIP6_EXPERIMENTS) == {"ssp245", "ssp370", "ssp460", "ssp585"}
+    # SSP3-7.0 is the CMIP7-aligned headline.
+    assert config.HEADLINE_EXPERIMENT == "ssp370"
