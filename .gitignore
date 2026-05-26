@@ -72,5 +72,8 @@ figures/*.jpg
 figures/*.jpeg
 !figures/.gitkeep
 
+# Claude Code session artifacts
+.claude/
+
 # OS / misc
 Thumbs.db
