@@ -162,6 +162,40 @@ def test_fig4_shap_drivers_renders(tmp_path: Path) -> None:
     _assert_vector_pdf(out)
 
 
+def test_fig5_landfall_density_renders(tmp_path: Path) -> None:
+    pytest.importorskip("cartopy")
+    from src.figures import fig5_landfall_density
+
+    rng = np.random.default_rng(3)
+
+    def synth_events(n: int, lat_centre: float) -> pd.DataFrame:
+        return pd.DataFrame(
+            {
+                # ERA5 events store lon in 0..360
+                "landfall_lon": rng.normal(loc=235.0, scale=2.0, size=n),
+                "landfall_lat": rng.normal(loc=lat_centre, scale=2.5, size=n),
+            }
+        )
+
+    observed = {
+        "pre_sat_1940_1979": synth_events(220, 35.0),
+        "modern_1980_2014": synth_events(245, 37.0),
+        "recent_2015_2024": synth_events(275, 39.0),
+    }
+    projected = {
+        "ssp245": synth_events(260, 39.5),
+        "ssp370": synth_events(290, 40.5),
+        "ssp460": synth_events(265, 40.0),
+        "ssp585": synth_events(330, 42.0),
+    }
+
+    out = tmp_path / "fig5.pdf"
+    fig = fig5_landfall_density.plot(observed, projected)
+    fig.savefig(out)
+    plt.close(fig)
+    _assert_vector_pdf(out)
+
+
 def test_pdf_fonttype_is_truetype() -> None:
     from src.figures._style import apply_nature_style
 
