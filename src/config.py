@@ -82,9 +82,13 @@ HEADLINE_EXPERIMENT = "ssp370"
 # CMIP6 inference module is responsible for falling back to a sibling
 # realisation if the configured ``source_id`` lacks ssp460 at 6hrLev.
 CMIP6_QUERY_BASE = {
+    # NB: 6hrPlevPt = instantaneous values on standard pressure levels, the
+    # right table for the Holton-feature pipeline. 6hrLev publishes values on
+    # the model's native hybrid coordinate, which would require hand-rolled
+    # interpolation we don't want to maintain.
     "activity_id": "ScenarioMIP",
-    "table_id": "6hrLev",
-    "variable_id": ["ua", "va", "ta", "hus", "ps"],
+    "table_id": "6hrPlevPt",
+    "variable_id": ["ua", "va", "ta", "hus", "zg"],
     "source_id": "MPI-ESM1-2-HR",
     "member_id": "r1i1p1f1",
 }
@@ -110,6 +114,17 @@ ERA5_VARS = {
     "q": "specific_humidity",
     "z": "geopotential",
     "sp": "surface_pressure",
+}
+
+# CMIP6 -> ERA5 variable rename map. zg (geopotential height in m) is
+# multiplied by g at the boundary so physics_pipeline's `/g` step still
+# recovers heights correctly without a branch.
+CMIP6_RENAME = {
+    "ua": ERA5_VARS["u"],
+    "va": ERA5_VARS["v"],
+    "ta": ERA5_VARS["t"],
+    "hus": ERA5_VARS["q"],
+    "zg": ERA5_VARS["z"],
 }
 
 # Precipitation, surface geopotential, and land-sea mask (Stage 2 / topography).
