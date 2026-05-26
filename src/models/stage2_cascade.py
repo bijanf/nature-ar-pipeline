@@ -131,11 +131,12 @@ def assign_event_folds(
         block_lon_col[has_land] = (lon_min + (bi_lon + 0.5) * block_deg).astype("float32")
 
         counts = pd.Series(block_id).value_counts().sort_values().index.to_numpy()
+        # Round-robin assignment with a small permutation inside ties to avoid
+        # systematic latitude bias. ``permutation`` returns a new writable
+        # array; the underlying ``counts`` view from pandas is read-only.
         rng = np.random.default_rng(seed)
-        # Round-robin assignment with a small shuffle inside ties to avoid
-        # systematic latitude bias.
-        rng.shuffle(counts)
-        block_to_fold = {b: i % n_folds for i, b in enumerate(counts)}
+        shuffled = rng.permutation(counts)
+        block_to_fold = {b: i % n_folds for i, b in enumerate(shuffled)}
         fold[has_land] = np.array([block_to_fold[b] for b in block_id], dtype="int32")
 
     return EventFoldPlan(
