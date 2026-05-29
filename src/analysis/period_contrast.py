@@ -95,17 +95,27 @@ def _events_for_period(
     period: tuple[str, str],
     era5_topo: xr.Dataset,
     sub_window: tuple[str, str] | None = None,
+    fixed_threshold: float | None = None,
 ) -> pd.DataFrame:
     """Stream + compute one period's events. One materialisation pass.
 
     ``sub_window`` lets a memory-capped job materialise a decade-sized slice
     while still using the full-period climatology, so the GW threshold stays
     period-consistent across chunked runs.
+
+    ``fixed_threshold`` (kg m⁻¹ s⁻¹) replaces the period-internal 85th-percentile
+    climatology with a spatially/seasonally uniform threshold — the manuscript's
+    fixed-threshold sensitivity test. The same value is used for every period so
+    that any remaining inter-period shift cannot be an artefact of threshold drift.
     """
     feats, ivt = _open_period_features(period)
 
-    # Period-internal climatology cached under a period-specific filename.
-    clim = ar_detection.compute_ivt_climatology(ivt.chunk({"time": -1}), period=period)
+    if fixed_threshold is not None:
+        # Sensitivity test: uniform threshold, no period-internal climatology.
+        clim = ar_detection.constant_climatology(ivt, fixed_threshold)
+    else:
+        # Period-internal climatology cached under a period-specific filename.
+        clim = ar_detection.compute_ivt_climatology(ivt.chunk({"time": -1}), period=period)
 
     if sub_window is not None and sub_window != period:
         feats = feats.sel(time=slice(*sub_window))
@@ -165,6 +175,7 @@ def run(
     periods: Iterable[tuple[str, tuple[str, str]]] = config.OBSERVATIONAL_PERIODS,
     out_suffix: str = "",
     time_range: tuple[str, str] | None = None,
+    fixed_threshold: float | None = None,
 ) -> Path:
     """Materialise per-period events + summaries, write Parquet.
 
@@ -189,7 +200,10 @@ def run(
     summaries: list[PeriodSummary] = []
     for period_name, period in periods:
         sub_window = time_range if time_range is not None else period
-        events = _events_for_period(period_name, period, era5_topo, sub_window=sub_window)
+        events = _events_for_period(
+            period_name, period, era5_topo,
+            sub_window=sub_window, fixed_threshold=fixed_threshold,
+        )
         all_events.append(events)
         summaries.append(summarise_period(events, period_name))
 
@@ -259,6 +273,13 @@ def main() -> None:
         default=None,
         help="Sub-slice each period to YYYY-MM-DD:YYYY-MM-DD (climatology stays full-period).",
     )
+    parser.add_argument(
+        "--fixed-threshold",
+        type=float,
+        default=None,
+        help="Fixed-threshold sensitivity test: replace the period-internal 85th-percentile "
+        "climatology with a uniform threshold (kg m⁻¹ s⁻¹) applied to every window.",
+    )
     args = parser.parse_args()
 
     if args.concat:
@@ -274,7 +295,10 @@ def main() -> None:
             start, end = args.time_range.split(":", 1)
             sub = (start, end)
 
-        out = run(periods, out_suffix=args.out_suffix, time_range=sub)
+        out = run(
+            periods, out_suffix=args.out_suffix, time_range=sub,
+            fixed_threshold=args.fixed_threshold,
+        )
 
     df = pd.read_parquet(out)
     print(json.dumps(df.to_dict(orient="records"), indent=2, default=float))

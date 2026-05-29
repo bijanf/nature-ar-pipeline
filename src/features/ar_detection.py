@@ -96,6 +96,32 @@ def compute_ivt_climatology(
     return xr.open_zarr(cache_path)["ivt_climatology"]
 
 
+def constant_climatology(ivt: xr.DataArray, value: float) -> xr.DataArray:
+    """A spatially- and seasonally-uniform 'climatology' equal to ``value``
+    everywhere, with the same ``(month, lat, lon)`` shape that
+    :func:`compute_ivt_climatology` returns.
+
+    This is the fixed-threshold sensitivity test: feeding it to
+    :func:`compute_ar_mask` yields a uniform per-pixel detection threshold of
+    ``max(value, GW_IVT_FLOOR)`` across every window, with no other change to
+    the detector. Comparing the resulting period contrast against the
+    period-internal-climatology run shows whether the observed shift is an
+    artefact of threshold drift (it should *not* be: a fixed threshold
+    preserves the direction of the shift while inflating later-window counts).
+    """
+    lat_name = "latitude" if "latitude" in ivt.coords else "lat"
+    lon_name = "longitude" if "longitude" in ivt.coords else "lon"
+    lat = ivt[lat_name]
+    lon = ivt[lon_name]
+    arr = np.full((12, lat.size, lon.size), float(value), dtype="float32")
+    return xr.DataArray(
+        arr,
+        dims=("month", lat_name, lon_name),
+        coords={"month": np.arange(1, 13), lat_name: lat, lon_name: lon},
+        name="ivt_climatology",
+    )
+
+
 # =============================================================================
 # Per-timestep geometry filter (the pure NumPy kernel)
 # =============================================================================

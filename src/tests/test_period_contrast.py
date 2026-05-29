@@ -90,9 +90,10 @@ def test_run_propagates_time_range_to_events(tmp_path, monkeypatch) -> None:
 
     captured: dict[str, object] = {}
 
-    def fake_events(period_name, period, era5_topo, sub_window=None):
+    def fake_events(period_name, period, era5_topo, sub_window=None, fixed_threshold=None):
         captured["period"] = period
         captured["sub_window"] = sub_window
+        captured["fixed_threshold"] = fixed_threshold
         return pd.DataFrame(
             {
                 "period": [period_name],
@@ -120,6 +121,7 @@ def test_run_propagates_time_range_to_events(tmp_path, monkeypatch) -> None:
 
     assert captured["period"] == config.MODERN_PERIOD
     assert captured["sub_window"] == ("1990-01-01", "1999-12-31")
+    assert captured["fixed_threshold"] is None  # default = period-internal climatology
     assert (tmp_path / "observational_events_modern_1990s.parquet").exists()
     assert (tmp_path / "period_contrast_modern_1990s.parquet").exists()
 
