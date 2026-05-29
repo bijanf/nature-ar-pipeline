@@ -41,6 +41,7 @@ hiccups without re-asking CDS for what it already wrote.
 from __future__ import annotations
 
 import argparse
+import os
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -92,12 +93,38 @@ def _client() -> cdsapi.Client:
     return cdsapi.Client(quiet=False, verify=True)
 
 
+# A real CDS NetCDF for our bbox is megabytes; anything tiny is a failed or
+# truncated write. A bare ``target.exists()`` let 0-byte files (left by a
+# crashed retrieve) masquerade as complete, so they were never re-fetched and
+# later crashed the loader with "NetCDF: Unknown file format".
+_MIN_VALID_BYTES = 4096
+
+
+def _already_complete(target: Path) -> bool:
+    return target.exists() and target.stat().st_size >= _MIN_VALID_BYTES
+
+
+def _retrieve_atomic(dataset: str, request: dict, target: Path) -> Path:
+    """Retrieve to a sibling ``.tmp`` and atomically rename on success, so an
+    interrupted download never leaves a file that looks complete. Any stale
+    ``.tmp`` (or undersized ``target``) is cleared first."""
+    target.parent.mkdir(parents=True, exist_ok=True)
+    tmp = target.with_name(target.name + ".tmp")
+    if tmp.exists():
+        tmp.unlink()
+    _client().retrieve(dataset, request, str(tmp))
+    if tmp.stat().st_size < _MIN_VALID_BYTES:
+        tmp.unlink(missing_ok=True)
+        raise OSError(f"CDS retrieve wrote an undersized file for {target.name}")
+    os.replace(tmp, target)
+    return target
+
+
 def fetch_pressure_level_month(year: int, month: int, out: Path) -> Path:
     target = out / f"{year}_{month:02d}_pl.nc"
-    if target.exists():
+    if _already_complete(target):
         return target
-    out.mkdir(parents=True, exist_ok=True)
-    _client().retrieve(
+    return _retrieve_atomic(
         _pl_dataset_name(year),
         {
             "product_type": "reanalysis",
@@ -111,17 +138,15 @@ def fetch_pressure_level_month(year: int, month: int, out: Path) -> Path:
             "time": _TIMES,
             "area": _AREA,
         },
-        str(target),
+        target,
     )
-    return target
 
 
 def fetch_surface_month(year: int, month: int, out: Path) -> Path:
     target = out / f"{year}_{month:02d}_sfc.nc"
-    if target.exists():
+    if _already_complete(target):
         return target
-    out.mkdir(parents=True, exist_ok=True)
-    _client().retrieve(
+    return _retrieve_atomic(
         _sl_dataset_name(year),
         {
             "product_type": "reanalysis",
@@ -134,9 +159,8 @@ def fetch_surface_month(year: int, month: int, out: Path) -> Path:
             "time": _TIMES,
             "area": _AREA,
         },
-        str(target),
+        target,
     )
-    return target
 
 
 def fetch_tp_month(year: int, month: int, out: Path) -> Path:
@@ -145,11 +169,10 @@ def fetch_tp_month(year: int, month: int, out: Path) -> Path:
     record; Stage 2 sums it over each AR event's footprint × duration.
     """
     target = out / f"{year}_{month:02d}_tp.nc"
-    if target.exists():
+    if _already_complete(target):
         return target
-    out.mkdir(parents=True, exist_ok=True)
     hourly_times = [f"{h:02d}:00" for h in range(24)]
-    _client().retrieve(
+    return _retrieve_atomic(
         _sl_dataset_name(year),
         {
             "product_type": "reanalysis",
@@ -162,9 +185,8 @@ def fetch_tp_month(year: int, month: int, out: Path) -> Path:
             "time": hourly_times,
             "area": _AREA,
         },
-        str(target),
+        target,
     )
-    return target
 
 
 _KIND_FN = {
@@ -210,10 +232,9 @@ def fetch_year(
 
 def fetch_static_fields(out: Path) -> Path:
     target = out / "static.nc"
-    if target.exists():
+    if _already_complete(target):
         return target
-    out.mkdir(parents=True, exist_ok=True)
-    _client().retrieve(
+    return _retrieve_atomic(
         "reanalysis-era5-single-levels",
         {
             "product_type": "reanalysis",
@@ -226,9 +247,8 @@ def fetch_static_fields(out: Path) -> Path:
             "time": "00:00",
             "area": _AREA,
         },
-        str(target),
+        target,
     )
-    return target
 
 
 def main() -> None:

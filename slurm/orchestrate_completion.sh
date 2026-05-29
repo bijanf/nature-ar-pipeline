@@ -29,12 +29,17 @@ PC=data/cache
 PRESAT_YEARS=$(seq 1940 1959)
 MODERN_YEARS=$(seq 1980 1999)
 
-count_pl () {  # $1 = space-separated years -> echoes count of *_pl.nc present
-    local n=0 y m f
+count_pl () {  # $1 = space-separated years -> count of *_pl.nc present AND non-empty
+    # Size gate (>=4096 B): a 0-byte / truncated file from a failed download
+    # must NOT count as complete, or we fire the analysis on a corrupt window
+    # ("NetCDF: Unknown file format"). Matches fetch_cds_era5._MIN_VALID_BYTES.
+    local n=0 y m f sz
     for y in $1; do
         for m in 01 02 03 04 05 06 07 08 09 10 11 12; do
             f="$CACHE/${y}_${m}_pl.nc"
-            [[ -f "$f" ]] && n=$((n+1))
+            [[ -f "$f" ]] || continue
+            sz=$(stat -c%s "$f" 2>/dev/null || echo 0)
+            [[ "$sz" -ge 4096 ]] && n=$((n+1))
         done
     done
     echo "$n"
