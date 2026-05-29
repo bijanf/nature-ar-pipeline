@@ -79,7 +79,13 @@ def _open_period_features(period: tuple[str, str]) -> tuple[xr.Dataset, xr.DataA
     request slot), so we detect the native cadence at the load boundary
     and only sub-sample when it's still hourly.
     """
-    ds = physics_pipeline.open_arco_era5()[list(physics_pipeline.required_era5_vars())]
+    # Only open this window's years from the cache. Other windows may still be
+    # mid-download in the shared cache dir; globbing a half-written file from a
+    # different window fails with "NetCDF: Unknown file format". The full
+    # period (not the sub-window) is opened so the period-internal climatology
+    # is computed over the whole window.
+    years = set(range(int(period[0][:4]), int(period[1][:4]) + 1))
+    ds = physics_pipeline.open_arco_era5(years=years)[list(physics_pipeline.required_era5_vars())]
     ds = ds.sel(time=slice(*period))
     if ds.sizes["time"] >= 2:
         dt = np.asarray(ds["time"][1] - ds["time"][0], dtype="timedelta64[h]")

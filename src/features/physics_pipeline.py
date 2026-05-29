@@ -63,7 +63,10 @@ _CDS_STATIC_RENAME = {
 # =============================================================================
 
 
-def open_arco_era5(zarr_url: str = config.ERA5_ZARR_URL) -> xr.Dataset:
+def open_arco_era5(
+    zarr_url: str = config.ERA5_ZARR_URL,
+    years: set[int] | None = None,
+) -> xr.Dataset:
     """Open the ARCO-ERA5 Zarr store and apply the regional bounding box.
     Returns a fully lazy `xr.Dataset` backed by Dask.
 
@@ -80,6 +83,14 @@ def open_arco_era5(zarr_url: str = config.ERA5_ZARR_URL) -> xr.Dataset:
       ``src.data.fetch_cds_era5``). Files are mfopened, GRIB shortNames are
       renamed to ARCO long names, and longitude is shifted to the 0..360
       convention so ``_apply_regional_bbox`` works unchanged.
+
+    ``years`` (local-NetCDF-cache mode only) restricts the mfopen to files
+    whose ``YYYY`` prefix is in the set. This is load-bearing when another
+    process is concurrently *writing* new months into the same cache dir: a
+    period job must not glob a half-downloaded file from a different window
+    (which surfaces as ``OSError: NetCDF: Unknown file format``). Callers that
+    know their window pass its year set; ``None`` keeps the open-everything
+    behaviour for the Zarr paths and full-cache reads.
     """
     # If the caller didn't override and ERA5_LOCAL_CACHE points at a populated
     # directory, prefer the local cache. Lets SLURM scripts opt in without
@@ -99,20 +110,39 @@ def open_arco_era5(zarr_url: str = config.ERA5_ZARR_URL) -> xr.Dataset:
     else:
         path = Path(zarr_url)
         if path.is_dir() and any(path.glob("*.nc")):
-            ds = _open_local_netcdf_cache(path)
+            ds = _open_local_netcdf_cache(path, years=years)
         else:
             ds = xr.open_zarr(zarr_url, consolidated=True, chunks={})
     ds = _apply_regional_bbox(ds)
     return _ensure_chunks(ds)
 
 
-def _open_local_netcdf_cache(root: Path) -> xr.Dataset:
-    """Load the per-year CDS NetCDF layout written by ``fetch_cds_era5``."""
-    pl_files = sorted(root.glob("*_pl.nc"))
-    sfc_files = sorted(root.glob("*_sfc.nc"))
+def _year_of(path: Path) -> int | None:
+    """Year prefix of a ``YYYY_MM_*.nc`` / ``YYYY_*.nc`` cache filename."""
+    stem = path.name[:4]
+    return int(stem) if stem.isdigit() else None
+
+
+def _open_local_netcdf_cache(root: Path, years: set[int] | None = None) -> xr.Dataset:
+    """Load the per-year CDS NetCDF layout written by ``fetch_cds_era5``.
+
+    ``years`` restricts which files are opened (by ``YYYY`` prefix). Passing the
+    caller's window avoids globbing files from other windows that may still be
+    mid-download in the shared cache dir.
+    """
+    def _in_years(paths: list[Path]) -> list[Path]:
+        if years is None:
+            return paths
+        return [p for p in paths if _year_of(p) in years]
+
+    pl_files = _in_years(sorted(root.glob("*_pl.nc")))
+    sfc_files = _in_years(sorted(root.glob("*_sfc.nc")))
     static_file = root / "static.nc"
     if not pl_files:
-        raise FileNotFoundError(f"No *_pl.nc files under {root}")
+        raise FileNotFoundError(
+            f"No *_pl.nc files under {root}"
+            + (f" for years {sorted(years)}" if years else "")
+        )
 
     pl = xr.open_mfdataset(
         [str(p) for p in pl_files],

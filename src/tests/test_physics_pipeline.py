@@ -116,6 +116,27 @@ def test_open_local_netcdf_cache_renames_and_shifts(tmp_path) -> None:
     assert ds.sizes["time"] == 8
 
 
+def test_open_local_cache_year_filter_skips_other_windows(tmp_path) -> None:
+    # Regression: a period job must not open a half-written file from another
+    # window that is still downloading in the shared cache dir. Simulate a
+    # corrupt in-flight 1951 file alongside a valid 2018 month; opening with
+    # years={2018} must succeed and ignore 1951 entirely.
+    _fake_pl(tmp_path, 2018, 1)
+    _fake_static(tmp_path)
+    (tmp_path / "1951_01_pl.nc").write_bytes(b"not a netcdf file")  # corrupt, mid-download
+
+    # With the year filter, the corrupt 1951 file is never globbed.
+    ds = physics_pipeline._open_local_netcdf_cache(tmp_path, years={2018})
+    assert ds.sizes["time"] == 4
+    yrs = np.unique(ds["time"].dt.year.to_numpy())
+    assert list(yrs) == [2018]
+
+    # Without the filter, the corrupt file is included and the open fails —
+    # this is exactly the production failure the filter prevents.
+    with pytest.raises(OSError):
+        physics_pipeline._open_local_netcdf_cache(tmp_path)
+
+
 def _fake_pik_tp(pik_dir, year: int, month: int) -> None:
     """Write a PIK-style total_precipitation_{YYYY}{MM}.nc with global var name `tp`.
     Hourly to mirror the real PIK store; the loader resamples to 6-hourly."""
