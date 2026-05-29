@@ -144,7 +144,7 @@ def main() -> None:
         default=None,
         help=(
             "When --events is observational_events.parquet, restrict to one "
-            "of config.OBSERVATIONAL_PERIODS by name (e.g. modern_1980_2014)."
+            "of config.OBSERVATIONAL_PERIODS by name (e.g. modern_1980_1999)."
         ),
     )
     parser.add_argument("--name", type=str, default="shap_attribution")

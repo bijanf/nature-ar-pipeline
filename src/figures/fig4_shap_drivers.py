@@ -52,10 +52,10 @@ _BAND_LABEL = {
     "central_35_45N": "35-45°N",
     "north_45_60N": "45-60°N",
 }
-_OBS_ORDER = ("pre_sat_1940_1979", "modern_1980_2014", "recent_2015_2024")
+_OBS_ORDER = ("pre_sat_1940_1959", "modern_1980_1999", "recent_2015_2024")
 _OBS_LABEL = {
-    "pre_sat_1940_1979": "Pre-sat",
-    "modern_1980_2014": "Modern",
+    "pre_sat_1940_1959": "Pre-sat",
+    "modern_1980_1999": "Modern",
     "recent_2015_2024": "Recent",
 }
 _SSP_LABEL = {

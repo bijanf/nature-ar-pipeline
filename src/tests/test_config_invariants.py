@@ -43,8 +43,11 @@ def test_required_era5_vars() -> None:
 def test_chunks_keep_vertical_and_spatial_whole() -> None:
     # Dask parallelism is along time only. Splitting level / latitude / longitude
     # would corrupt MetPy spherical derivatives and the vertical IVT integral.
+    # The exact time-chunk size is tunable (sized for the io-partition's
+    # cgroup cap); the load-bearing invariant is that the vertical and
+    # horizontal dims stay un-chunked.
     chunks = config.DEFAULT_CHUNKS
-    assert chunks["time"] == 240
+    assert isinstance(chunks["time"], int) and 0 < chunks["time"] <= 240
     assert chunks["level"] == -1
     assert chunks["latitude"] == -1
     assert chunks["longitude"] == -1

@@ -64,6 +64,12 @@ def compute_ivt_climatology(
     Returns a DataArray with dims ``(month, lat, lon)`` and units of
     ``kg m⁻¹ s⁻¹``. Materialises and caches at
     ``CACHE_DIR / "ivt_climatology_<period>.zarr"``.
+
+    The earlier ``window.chunk({'time': -1}).groupby('time.month').quantile(...)``
+    pattern forced the full-period IVT into one Dask chunk and reliably OOMed
+    a 20 GB cgroup. We instead loop per calendar month and ``compute()`` each
+    month's quantile in turn; the peak working set is one month of IVT
+    (≈100-500 MB for our periods) rather than the full period.
     """
     cache_path = (
         config.CACHE_DIR
@@ -74,9 +80,18 @@ def compute_ivt_climatology(
 
     config.CACHE_DIR.mkdir(parents=True, exist_ok=True)
     window = ivt.sel(time=slice(*period))
-    # quantile() needs the reduce dim un-chunked.
-    clim = window.chunk({"time": -1}).groupby("time.month").quantile(q=quantile, dim="time")
-    clim = clim.astype("float32").rename("ivt_climatology")
+
+    months: list[xr.DataArray] = []
+    for m in range(1, 13):
+        sub = window.sel(time=window["time"].dt.month == m)
+        mq = sub.quantile(quantile, dim="time").compute()
+        mq = mq.expand_dims(month=[m])
+        months.append(mq)
+
+    clim = xr.concat(months, dim="month").astype("float32").rename("ivt_climatology")
+    # Drop the spurious 'quantile' scalar coord that xr.DataArray.quantile
+    # attaches — it isn't a dimension and confuses downstream selections.
+    clim = clim.drop_vars("quantile", errors="ignore")
     clim.to_dataset().to_zarr(cache_path, mode="w", consolidated=True)
     return xr.open_zarr(cache_path)["ivt_climatology"]
 
@@ -191,6 +206,13 @@ def compute_ar_mask(
 
     lat_1d = ivt[lat_name].values
     lon_1d = ivt[lon_name].values
+
+    # apply_ufunc with core dims requires a single chunk along the core dims;
+    # rechunk lazily (cheap when the dim is already small from the bbox slice).
+    rechunk = {lat_name: -1, lon_name: -1}
+    candidate = candidate.chunk(rechunk)
+    ivt_u = ivt_u.chunk(rechunk)
+    ivt_v = ivt_v.chunk(rechunk)
 
     mask = xr.apply_ufunc(
         _filter_one_timestep,

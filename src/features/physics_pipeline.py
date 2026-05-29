@@ -25,7 +25,9 @@ Engineering invariants (per the project directive):
 
 from __future__ import annotations
 
+import os
 from collections.abc import Iterable
+from pathlib import Path
 
 import metpy.calc as mpcalc
 import numpy as np
@@ -33,27 +35,178 @@ import xarray as xr
 
 from src import config
 
+# Mapping CDS GRIB shortNames -> ARCO-ERA5 long names. The local-NetCDF cache
+# (src.data.fetch_cds_era5) writes variables under the shortNames; the rest of
+# the pipeline addresses them through `config.ERA5_VARS` / `ERA5_SURFACE_VARS`,
+# which use the ARCO long names. We rename at the load boundary so downstream
+# code is source-agnostic.
+_CDS_PL_RENAME = {
+    "u": config.ERA5_VARS["u"],
+    "v": config.ERA5_VARS["v"],
+    "t": config.ERA5_VARS["t"],
+    "q": config.ERA5_VARS["q"],
+    "z": config.ERA5_VARS["z"],
+}
+_CDS_SFC_RENAME = {
+    "sp": config.ERA5_VARS["sp"],
+}
+_CDS_TP_RENAME = {
+    "tp": config.ERA5_SURFACE_VARS["tp"],
+}
+_CDS_STATIC_RENAME = {
+    "lsm": config.ERA5_SURFACE_VARS["lsm"],
+    "z": config.ERA5_SURFACE_VARS["z_sfc"],
+}
+
 # =============================================================================
 # Cloud ingestion
 # =============================================================================
 
 
 def open_arco_era5(zarr_url: str = config.ERA5_ZARR_URL) -> xr.Dataset:
-    """Open the ARCO-ERA5 Zarr store on GCS with anonymous access and apply the
-    regional bounding box. Returns a fully lazy `xr.Dataset` backed by Dask.
+    """Open the ARCO-ERA5 Zarr store and apply the regional bounding box.
+    Returns a fully lazy `xr.Dataset` backed by Dask.
 
-    The store is `consolidated=True` so we get a single metadata round-trip.
-    Native Zarr chunks are preserved (`chunks={}`); Dask then layers its task
-    graph on top of those chunk boundaries.
+    Three ingest modes, dispatched on the shape of ``zarr_url``:
+
+    * remote (``"://" in zarr_url``) — anonymous Zarr open on GCS / S3 / HTTPS.
+      Native Zarr chunks are preserved (``chunks={}``); Dask then layers its
+      task graph on top of those chunk boundaries.
+    * local Zarr — a directory ending in ``.zarr`` (or a single-Zarr layout
+      produced by ``src.data.stage_arco_to_local``) — opened with no
+      storage_options, otherwise identical.
+    * local NetCDF cache — a directory containing CDS-fetched per-year files
+      (``{YYYY}_pl.nc``, ``{YYYY}_sfc.nc``, ``static.nc`` from
+      ``src.data.fetch_cds_era5``). Files are mfopened, GRIB shortNames are
+      renamed to ARCO long names, and longitude is shifted to the 0..360
+      convention so ``_apply_regional_bbox`` works unchanged.
     """
-    ds = xr.open_zarr(
-        zarr_url,
-        consolidated=True,
-        storage_options={"token": "anon"},
-        chunks={},
-    )
+    # If the caller didn't override and ERA5_LOCAL_CACHE points at a populated
+    # directory, prefer the local cache. Lets SLURM scripts opt in without
+    # touching call sites in period_contrast / stage / inference modules.
+    if zarr_url == config.ERA5_ZARR_URL:
+        env_override = os.environ.get("ERA5_LOCAL_CACHE")
+        if env_override:
+            zarr_url = env_override
+
+    if "://" in zarr_url:
+        ds = xr.open_zarr(
+            zarr_url,
+            consolidated=True,
+            storage_options={"token": "anon"},
+            chunks={},
+        )
+    else:
+        path = Path(zarr_url)
+        if path.is_dir() and any(path.glob("*.nc")):
+            ds = _open_local_netcdf_cache(path)
+        else:
+            ds = xr.open_zarr(zarr_url, consolidated=True, chunks={})
     ds = _apply_regional_bbox(ds)
     return _ensure_chunks(ds)
+
+
+def _open_local_netcdf_cache(root: Path) -> xr.Dataset:
+    """Load the per-year CDS NetCDF layout written by ``fetch_cds_era5``."""
+    pl_files = sorted(root.glob("*_pl.nc"))
+    sfc_files = sorted(root.glob("*_sfc.nc"))
+    static_file = root / "static.nc"
+    if not pl_files:
+        raise FileNotFoundError(f"No *_pl.nc files under {root}")
+
+    pl = xr.open_mfdataset(
+        [str(p) for p in pl_files],
+        combine="by_coords",
+        chunks={},
+        engine="netcdf4",
+    ).rename({k: v for k, v in _CDS_PL_RENAME.items() if k in xr.open_dataset(pl_files[0]).data_vars})
+
+    if sfc_files:
+        sfc = xr.open_mfdataset(
+            [str(p) for p in sfc_files],
+            combine="by_coords",
+            chunks={},
+            engine="netcdf4",
+        ).rename({k: v for k, v in _CDS_SFC_RENAME.items() if k in xr.open_dataset(sfc_files[0]).data_vars})
+        merged = xr.merge([pl, sfc], compat="override")
+    else:
+        merged = pl
+
+    # Shift CDS pl/sfc longitudes to 0..360 BEFORE merging in PIK tp.
+    # CDS writes lon in -180..180; PIK is 0..360. The mod-360 transform below
+    # is idempotent for already-0..360 grids, so it's safe to run unconditionally.
+    lon_name_in = "longitude" if "longitude" in merged.coords else "lon"
+    merged = merged.assign_coords({lon_name_in: merged[lon_name_in] % 360.0})
+    merged = merged.sortby(lon_name_in)
+
+    tp_files = sorted(root.glob("*_tp.nc"))
+    pik_dir = os.environ.get("ERA5_TP_PIK_DIR", config.ERA5_TP_PIK_DIR)
+    tp_from_pik = False
+    if not tp_files and pik_dir and Path(pik_dir).is_dir():
+        # PIK climate_data_central layout: total_precipitation_{YYYY}{MM}.nc.
+        # Limit to years already in the local pl cache so we don't mfopen the
+        # whole 1940-2024 archive when only a subset is on disk.
+        years = sorted({Path(p).name.split("_")[0] for p in pl_files})
+        pik_root = Path(pik_dir)
+        for y in years:
+            tp_files.extend(sorted(pik_root.glob(f"total_precipitation_{y}??.nc")))
+        tp_from_pik = bool(tp_files)
+    if tp_files:
+        # PIK tp NetCDFs are GLOBAL 0.25° (721×1440); a naive
+        # `combine="by_coords"` mfopen of 200+ such files blows RAM during
+        # coord alignment. Bbox-subset each file in a `preprocess` callback so
+        # only a ~140×160 slab is concat'd, and use `combine="nested"` with an
+        # explicit time concat_dim to skip alignment. The local-cache CDS
+        # `*_tp.nc` are already server-side bbox-sliced, so they stream
+        # cheaply through the same path.
+        time_dim = "valid_time"  # PIK and CDS both use valid_time
+        if tp_from_pik:
+            tp = xr.open_mfdataset(
+                [str(p) for p in tp_files],
+                combine="nested",
+                concat_dim=time_dim,
+                chunks={},
+                engine="netcdf4",
+                preprocess=_apply_regional_bbox,
+                parallel=False,
+            )
+        else:
+            tp = xr.open_mfdataset(
+                [str(p) for p in tp_files],
+                combine="by_coords",
+                chunks={},
+                engine="netcdf4",
+            )
+        tp = tp.rename({k: v for k, v in _CDS_TP_RENAME.items() if k in tp.data_vars})
+        # tp is hourly while pl/sfc are 6-hourly. Resample tp to the
+        # pl-time grid by summing each 6-hour window — total precip in
+        # the preceding 6 h, ready for per-event Stage 2 aggregation.
+        if time_dim not in tp.dims:
+            time_dim = "time"
+        tp = tp.resample({time_dim: "6h"}).sum()
+        merged = xr.merge([merged, tp], compat="override", join="inner")
+
+    if static_file.exists():
+        static = xr.open_dataset(str(static_file), engine="netcdf4")
+        static = static.rename({k: v for k, v in _CDS_STATIC_RENAME.items() if k in static.data_vars})
+        if "valid_time" in static.dims:
+            static = static.isel(valid_time=0).drop_vars("valid_time", errors="ignore")
+        if "time" in static.dims:
+            static = static.isel(time=0).drop_vars("time", errors="ignore")
+        if "number" in static.dims:
+            static = static.squeeze("number", drop=True)
+        static_lon = "longitude" if "longitude" in static.coords else "lon"
+        static = static.assign_coords({static_lon: static[static_lon] % 360.0}).sortby(static_lon)
+        merged = xr.merge([merged, static], compat="override")
+
+    if "valid_time" in merged.dims:
+        merged = merged.rename({"valid_time": "time"})
+    if "number" in merged.dims:
+        merged = merged.squeeze("number", drop=True)
+    if "pressure_level" in merged.dims:
+        merged = merged.rename({"pressure_level": "level"})
+
+    return merged
 
 
 def _apply_regional_bbox(ds: xr.Dataset) -> xr.Dataset:

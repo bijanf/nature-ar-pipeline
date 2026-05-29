@@ -34,6 +34,9 @@ components without persisting them in the events Parquet.
 
 from __future__ import annotations
 
+import os
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 import scipy.ndimage as ndi
@@ -45,20 +48,55 @@ from src.features import physics_pipeline
 
 def open_era5_topography(zarr_url: str = config.ERA5_ZARR_URL) -> xr.Dataset:
     """Lazy ERA5 topography dataset: surface elevation + land-sea mask, bbox-sliced."""
+    if zarr_url == config.ERA5_ZARR_URL:
+        env_override = os.environ.get("ERA5_LOCAL_CACHE")
+        if env_override:
+            zarr_url = env_override
+
+    if "://" not in zarr_url:
+        path = Path(zarr_url)
+        if path.is_dir() and (path / "static.nc").exists():
+            return _open_topography_from_static_nc(path / "static.nc")
+
     ds = xr.open_zarr(zarr_url, consolidated=True, storage_options={"token": "anon"}, chunks={})
     z_sfc = ds[config.ERA5_SURFACE_VARS["z_sfc"]] / physics_pipeline._G
     lsm = ds[config.ERA5_SURFACE_VARS["lsm"]]
 
-    # Some ARCO-ERA5 stores hold the static fields with a singleton time dim
-    # corresponding to the first analysis cycle. Strip it.
+    # ARCO-ERA5 v3 stores the static fields on the full hourly time axis
+    # (1900..2050) but only populates them inside the ERA5 record itself
+    # (1940..2024). Selecting time=0 (1900-01-01) returns NaN. Pick a date
+    # known to lie in the satellite era; the fields are time-invariant.
+    static_t = "1990-01-01"
     if "time" in z_sfc.dims:
-        z_sfc = z_sfc.isel(time=0, drop=True)
+        z_sfc = z_sfc.sel(time=static_t, method="nearest").drop_vars("time", errors="ignore")
     if "time" in lsm.dims:
-        lsm = lsm.isel(time=0, drop=True)
+        lsm = lsm.sel(time=static_t, method="nearest").drop_vars("time", errors="ignore")
 
     topo = xr.Dataset(
         {"elevation_m": z_sfc.astype("float32"), "land_sea_mask": lsm.astype("float32")}
     )
+    return physics_pipeline._apply_regional_bbox(topo)
+
+
+def _open_topography_from_static_nc(static_nc: Path) -> xr.Dataset:
+    """Build the topography dataset from the CDS static.nc fetched by
+    ``src.data.fetch_cds_era5``. The file carries ``lsm`` and surface
+    geopotential ``z`` (m^2/s^2) over the West-Coast bbox.
+    """
+    ds = xr.open_dataset(str(static_nc), engine="netcdf4")
+    if "valid_time" in ds.dims:
+        ds = ds.isel(valid_time=0).drop_vars("valid_time", errors="ignore")
+    if "time" in ds.dims:
+        ds = ds.isel(time=0).drop_vars("time", errors="ignore")
+    if "number" in ds.dims:
+        ds = ds.squeeze("number", drop=True)
+
+    z_sfc = (ds["z"] / physics_pipeline._G).astype("float32")
+    lsm = ds["lsm"].astype("float32")
+    topo = xr.Dataset({"elevation_m": z_sfc, "land_sea_mask": lsm})
+
+    lon_name = "longitude" if "longitude" in topo.coords else "lon"
+    topo = topo.assign_coords({lon_name: topo[lon_name] % 360.0}).sortby(lon_name)
     return physics_pipeline._apply_regional_bbox(topo)
 
 

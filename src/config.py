@@ -21,15 +21,18 @@ CACHE_DIR = DATA_DIR / "cache"
 # Observational periods (full ERA5 record back to 1940) and ML windows.
 #
 # Story A framing: the manuscript reports three observational periods plus
-# four projected SSPs on a single trajectory. Pre-satellite ERA5 (1940-1979)
-# has reduced observational constraint, so it is *analysis-only* — the ML
+# four projected SSPs on a single trajectory. The three observational
+# windows are length-balanced (two 20-yr early windows + the 10-yr Recent
+# window) so the period contrast is not confounded by unequal sample sizes.
+# Pre-satellite ERA5 (1940-1959) has reduced observational constraint, so
+# it is *analysis-only* — the ML
 # pipeline never trains on it. The ML trains on MODERN (= TRAIN_PERIOD) and
 # generalises to RECENT (= HOLDOUT_PERIOD); the period-contrast analysis
 # (src.analysis.period_contrast) then reports observed shifts across all
 # three windows independent of the ML.
 # -----------------------------------------------------------------------------
-PRE_SAT_PERIOD = ("1940-01-01", "1979-12-31")
-MODERN_PERIOD = ("1980-01-01", "2014-12-31")
+PRE_SAT_PERIOD = ("1940-01-01", "1959-12-31")
+MODERN_PERIOD = ("1980-01-01", "1999-12-31")
 RECENT_PERIOD = ("2015-01-01", "2024-12-31")
 
 # Aliases preserved for downstream code that already calls these names.
@@ -38,8 +41,8 @@ HOLDOUT_PERIOD = RECENT_PERIOD
 
 # Ordered observational periods for the trajectory figure.
 OBSERVATIONAL_PERIODS = (
-    ("pre_sat_1940_1979", PRE_SAT_PERIOD),
-    ("modern_1980_2014", MODERN_PERIOD),
+    ("pre_sat_1940_1959", PRE_SAT_PERIOD),
+    ("modern_1980_1999", MODERN_PERIOD),
     ("recent_2015_2024", RECENT_PERIOD),
 )
 
@@ -119,7 +122,7 @@ CMIP6_QUERY_BASE = {
 # MetPy spherical operators don't see partial neighborhoods.
 # -----------------------------------------------------------------------------
 DEFAULT_CHUNKS = {
-    "time": 240,  # ~10 days at hourly cadence
+    "time": 24,  # 1 day hourly — sized for the io-partition's 20 GB cap
     "level": -1,  # all pressure levels together (needed for integrals)
     "latitude": -1,
     "longitude": -1,
@@ -154,6 +157,14 @@ ERA5_SURFACE_VARS = {
     "z_sfc": "geopotential_at_surface",
     "lsm": "land_sea_mask",
 }
+
+# PIK climate_data_central holds the full ERA5 record (1940-2024) of hourly
+# total_precipitation as monthly NetCDF files named
+# ``total_precipitation_{YYYY}{MM}.nc`` on the global 0.25-deg grid. When the
+# local NetCDF cache has no ``*_tp.nc`` files but ERA5_TP_PIK_DIR points at
+# this directory, ``physics_pipeline._open_local_netcdf_cache`` reads tp from
+# there directly — no need to re-fetch it via CDS.
+ERA5_TP_PIK_DIR = "/p/projects/climate_data_central/reanalysis/ERA5/total_precipitation"
 
 # -----------------------------------------------------------------------------
 # Guan & Waliser (2015) AR detection — algorithm thresholds.

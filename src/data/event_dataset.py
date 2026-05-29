@@ -120,15 +120,16 @@ def write_dataset(df: pd.DataFrame, name: str = "events_dataset") -> Path:
 
 
 def _open_era5_tp() -> xr.DataArray:
-    """Open ERA5 hourly total_precipitation from the project Zarr, bbox-sliced."""
-    ds = xr.open_zarr(
-        config.ERA5_ZARR_URL,
-        consolidated=True,
-        storage_options={"token": "anon"},
-        chunks={},
-    )
-    tp = ds[config.ERA5_SURFACE_VARS["tp"]]
-    return physics_pipeline._apply_regional_bbox(tp.to_dataset())[config.ERA5_SURFACE_VARS["tp"]]
+    """Open ERA5 total_precipitation, bbox-sliced.
+
+    Dispatches via :func:`physics_pipeline.open_arco_era5` so the local CDS
+    NetCDF cache (when ``ERA5_LOCAL_CACHE`` is set) is preferred over the
+    remote Zarr — same dispatch as the rest of the pipeline. The local
+    cache loader resamples tp from hourly to 6-hourly before merging into
+    the main dataset; we re-expose the resampled tp here.
+    """
+    ds = physics_pipeline.open_arco_era5()
+    return ds[config.ERA5_SURFACE_VARS["tp"]]
 
 
 def main() -> None:

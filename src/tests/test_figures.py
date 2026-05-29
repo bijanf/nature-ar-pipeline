@@ -64,7 +64,7 @@ def test_fig3_trajectory_renders(tmp_path: Path) -> None:
     observed = pd.DataFrame(
         [
             {
-                "period_name": "pre_sat_1940_1979",
+                "period_name": "pre_sat_1940_1959",
                 "n_events": 220,
                 "mean_intensity": 320.0,
                 "mean_max_intensity": 410.0,
@@ -76,7 +76,7 @@ def test_fig3_trajectory_renders(tmp_path: Path) -> None:
                 "duration_q95": 33.0,
             },
             {
-                "period_name": "modern_1980_2014",
+                "period_name": "modern_1980_1999",
                 "n_events": 245,
                 "mean_intensity": 360.0,
                 "mean_max_intensity": 470.0,
@@ -144,8 +144,8 @@ def test_fig4_shap_drivers_renders(tmp_path: Path) -> None:
         )
 
     observed = {
-        "pre_sat_1940_1979": synth_table(0.85),
-        "modern_1980_2014": synth_table(1.0),
+        "pre_sat_1940_1959": synth_table(0.85),
+        "modern_1980_1999": synth_table(1.0),
         "recent_2015_2024": synth_table(1.15),
     }
     projected = {
@@ -178,8 +178,8 @@ def test_fig5_landfall_density_renders(tmp_path: Path) -> None:
         )
 
     observed = {
-        "pre_sat_1940_1979": synth_events(220, 35.0),
-        "modern_1980_2014": synth_events(245, 37.0),
+        "pre_sat_1940_1959": synth_events(220, 35.0),
+        "modern_1980_1999": synth_events(245, 37.0),
         "recent_2015_2024": synth_events(275, 39.0),
     }
     projected = {
