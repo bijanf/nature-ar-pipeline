@@ -121,7 +121,12 @@ def _events_for_period(
         clim = ar_detection.constant_climatology(ivt, fixed_threshold)
     else:
         # Period-internal climatology cached under a period-specific filename.
-        clim = ar_detection.compute_ivt_climatology(ivt.chunk({"time": -1}), period=period)
+        # Pass IVT at its natural time chunking (DEFAULT_CHUNKS time=24): the
+        # climatology loops per calendar month and rechunks each month to one
+        # time chunk on its own. Forcing the full period into a single chunk
+        # here makes every month's selection drag in all 20 yr of upstream
+        # pressure-level fields, which OOMed the 1940-59 / 1980-99 jobs at 191 GB.
+        clim = ar_detection.compute_ivt_climatology(ivt, period=period)
 
     if sub_window is not None and sub_window != period:
         feats = feats.sel(time=slice(*sub_window))

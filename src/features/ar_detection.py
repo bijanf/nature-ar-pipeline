@@ -84,7 +84,13 @@ def compute_ivt_climatology(
     months: list[xr.DataArray] = []
     for m in range(1, 13):
         sub = window.sel(time=window["time"].dt.month == m)
-        mq = sub.quantile(quantile, dim="time").compute()
+        # Rechunk to a single time chunk *for this month only* — quantile needs
+        # the reduced dim in one chunk, and one month of IVT (~hundreds of MB)
+        # is a bounded working set. We deliberately do NOT rely on the caller
+        # collapsing the full period to one chunk: that forces dask to compute
+        # all upstream pressure-level fields for the entire window to extract
+        # any single month, which OOMs the 20-yr windows at ~191 GB.
+        mq = sub.chunk({"time": -1}).quantile(quantile, dim="time").compute()
         mq = mq.expand_dims(month=[m])
         months.append(mq)
 
