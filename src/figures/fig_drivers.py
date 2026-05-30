@@ -141,18 +141,46 @@ def plot(composites_path: Path, out_path: Path) -> Path:
             cb = fig.colorbar(pcm, ax=ax, fraction=0.046, pad=0.03)
             cb.set_label("mean IVT (kg m$^{-1}$ s$^{-1}$)", fontsize=6)
 
+    # Significance of the total change: Welch t-test on per-year annual-mean IVT
+    # (recent vs pre-sat). Stipple where NOT significant, so the eye trusts the
+    # coloured (significant) majority.
+    nonsig = None
+    try:
+        from scipy.stats import ttest_ind
+        py0 = xr.open_dataset(config.CACHE_DIR / f"spatial_peryear_{a}.nc")["ivt_annual"]
+        py1 = xr.open_dataset(config.CACHE_DIR / f"spatial_peryear_{b}.nc")["ivt_annual"]
+        _, pval = ttest_ind(py1.to_numpy(), py0.to_numpy(), axis=0, equal_var=False)
+        nonsig = pval >= 0.05
+    except Exception:
+        nonsig = None
+
+    # 500 hPa geopotential-height change (m) — the large-scale circulation shift
+    # that underlies the dynamic component.
+    dz500 = None
+    if "zbar" in g[a]:
+        zlev = "level" if "level" in g[a]["zbar"].dims else "pressure_level"
+        dz500 = ((g[b]["zbar"] - g[a]["zbar"]).sel({zlev: 500}) / _G)
+
     # --- Row 2: change + thermodynamic + dynamic -----------------------------
     dmax = float(np.nanpercentile(np.abs(d_total.to_numpy()), 99))
     panels = [
         (d_total, f"(d) Total change\n(recent − pre-sat), corridor +{cm_total:.0f}"),
         (d_thermo, f"(e) Thermodynamic\n(moisture/CC), +{cm_thermo:.0f}"),
-        (d_dyn, f"(f) Dynamic\n(circulation), {cm_dyn:+.0f}"),
+        (d_dyn, f"(f) Dynamic + Δz$_{{500}}$\n(circulation), {cm_dyn:+.0f}"),
     ]
     for j, (field, title) in enumerate(panels):
         ax = fig.add_subplot(gs[1, j], projection=proj)
         _basemap(ax)
         pcm = ax.pcolormesh(lons_m, lats, field.to_numpy(), transform=proj,
                             cmap="RdBu_r", vmin=-dmax, vmax=dmax, shading="auto")
+        if j == 0 and nonsig is not None:
+            yy, xx = np.where(nonsig)
+            ax.scatter(lons_m[xx][::6], lats[yy][::6], s=0.6, c="0.35",
+                       alpha=0.55, marker=".", linewidths=0, transform=proj, zorder=4)
+        if j == 2 and dz500 is not None:
+            cs = ax.contour(lons_m, lats, dz500.to_numpy(), levels=7,
+                            colors="k", linewidths=0.5, transform=proj, zorder=5)
+            ax.clabel(cs, inline=True, fontsize=4, fmt="%.0f")
         ax.set_title(title, fontsize=7)
         if j == len(panels) - 1:
             cb = fig.colorbar(pcm, ax=ax, fraction=0.046, pad=0.03)

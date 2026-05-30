@@ -61,6 +61,7 @@ def _window_time_means(period: tuple[str, str]) -> xr.Dataset:
     u = ds[config.ERA5_VARS["u"]]
     v = ds[config.ERA5_VARS["v"]]
     t = ds[config.ERA5_VARS["t"]]
+    z = ds[config.ERA5_VARS["z"]]
     lev = _level_name(q)
 
     ivt_ds = physics_pipeline.integrated_vapor_transport(ds)
@@ -72,6 +73,7 @@ def _window_time_means(period: tuple[str, str]) -> xr.Dataset:
         "ubar": u,
         "vbar": v,
         "tbar": t,                 # mean temperature per level -> Clausius-Clapeyron ΔT
+        "zbar": z,                 # geopotential per level -> large-scale circulation
         "qu_bar": q * u,
         "qv_bar": q * v,
         "ivt": ivt_ds["ivt"],
@@ -83,6 +85,7 @@ def _window_time_means(period: tuple[str, str]) -> xr.Dataset:
     y0, y1 = int(period[0][:4]), int(period[1][:4])
     acc: dict[str, xr.DataArray] = {}
     n = 0
+    ivt_years: list[xr.DataArray] = []          # per-year annual-mean IVT for significance
     for y in range(y0, y1 + 1):
         yr = slice(f"{y}-01-01", f"{y}-12-31")
         nt = int(ds.sel(time=yr).sizes.get("time", 0))
@@ -91,18 +94,21 @@ def _window_time_means(period: tuple[str, str]) -> xr.Dataset:
         for name, da in fields.items():
             s = da.sel(time=yr).sum("time").compute()
             acc[name] = s if name not in acc else acc[name] + s
+        ivt_years.append(
+            ivt_ds["ivt"].sel(time=yr).mean("time").compute()
+            .expand_dims(year=[y]).astype("float32"))
         n += nt
 
     out = {name: (acc[name] / n).astype("float32") for name in acc}
-    # Mean IVT magnitude reconstructed from the mean flux vector (so the map and
-    # the decomposition use a consistent IVT). Keep both: <|IVT|> (acc["ivt"])
-    # and |<IVT>| for reference.
     ds_out = xr.Dataset(out)
     ds_out["ivt_mag_from_mean"] = np.hypot(ds_out["ivt_u"], ds_out["ivt_v"]).astype("float32")
     ds_out.attrs["period"] = f"{period[0]}:{period[1]}"
     ds_out.attrs["n_timesteps"] = n
     ds_out.attrs["pressure_level_name"] = lev
-    return ds_out
+    # Per-year annual-mean IVT (year, lat, lon) for the significance test. Kept
+    # separate because the year dimension differs per window (20/20/10).
+    peryear = xr.concat(ivt_years, dim="year").rename("ivt_annual")
+    return ds_out, peryear
 
 
 def run(periods=None, out_dir=None) -> list:
@@ -113,10 +119,11 @@ def run(periods=None, out_dir=None) -> list:
     per_window = {}
     for name, period in periods:
         short = _SHORT.get(name, name)
-        comp = _window_time_means(tuple(period))
+        comp, peryear = _window_time_means(tuple(period))
         comp = comp.expand_dims(window=[short])
         path = out_dir / f"spatial_composite_{short}.nc"
         comp.to_netcdf(path)
+        peryear.to_netcdf(out_dir / f"spatial_peryear_{short}.nc")
         written.append(path)
         per_window[short] = comp
         print(f"wrote {path}  (n_timesteps={int(comp.attrs['n_timesteps'])})")
