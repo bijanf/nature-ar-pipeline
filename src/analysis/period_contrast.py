@@ -70,28 +70,44 @@ class PeriodSummary:
     duration_q95: float
 
 
-def _open_period_features(period: tuple[str, str]) -> tuple[xr.Dataset, xr.DataArray]:
-    """Return (lazy Holton-features dataset, lazy IVT-only DataArray) for ``period``.
+def _open_raw_era5(window: tuple[str, str]) -> xr.Dataset:
+    """Open this window's raw ERA5 fields (lazy), 6-hourly.
 
     The Guan-Waliser detector is calibrated for 6-hourly cadence (GW §3.2).
     The ARCO-ERA5 v3 Zarr is hourly on disk and is sub-sampled by 6× here;
     the local CDS NetCDF cache is already 6-hourly (one timestep per
     request slot), so we detect the native cadence at the load boundary
     and only sub-sample when it's still hourly.
+
+    Only this window's years are opened from the cache: other windows may be
+    mid-download in the shared cache dir, and globbing a half-written file from
+    a different window fails with "NetCDF: Unknown file format".
     """
-    # Only open this window's years from the cache. Other windows may still be
-    # mid-download in the shared cache dir; globbing a half-written file from a
-    # different window fails with "NetCDF: Unknown file format". The full
-    # period (not the sub-window) is opened so the period-internal climatology
-    # is computed over the whole window.
-    years = set(range(int(period[0][:4]), int(period[1][:4]) + 1))
+    years = set(range(int(window[0][:4]), int(window[1][:4]) + 1))
     ds = physics_pipeline.open_arco_era5(years=years)[list(physics_pipeline.required_era5_vars())]
-    ds = ds.sel(time=slice(*period))
+    ds = ds.sel(time=slice(*window))
     if ds.sizes["time"] >= 2:
         dt = np.asarray(ds["time"][1] - ds["time"][0], dtype="timedelta64[h]")
         if dt < np.timedelta64(6, "h"):
             stride = max(1, int(np.timedelta64(6, "h") / dt))
             ds = ds.isel(time=slice(None, None, stride))
+    return ds
+
+
+def _open_period_features(window: tuple[str, str]) -> tuple[xr.Dataset, xr.DataArray]:
+    """Return (lazy Holton-features dataset, lazy IVT DataArray) for ``window``.
+
+    Builds the full Holton feature set (IVT, theta_e, PV, Eady) over ``window``.
+
+    IMPORTANT (memory): ``physics_pipeline.calculate_dynamics`` eagerly evaluates
+    its metpy PV / Eady graph while it is *built*, so its peak memory scales with
+    the span of ``window``. Callers must pass a memory-sized sub-window (e.g. a
+    5-yr chunk) — building it over a full 20-yr period OOMs at ~191 GB before any
+    ``.compute()`` runs. The period-internal climatology, which genuinely needs
+    the full period, is computed separately from the light IVT-only path (see
+    :func:`_events_for_period`).
+    """
+    ds = _open_raw_era5(window)
     feats = physics_pipeline.calculate_dynamics(ds)
     return feats, feats["ivt"]
 
@@ -114,22 +130,23 @@ def _events_for_period(
     fixed-threshold sensitivity test. The same value is used for every period so
     that any remaining inter-period shift cannot be an artefact of threshold drift.
     """
-    feats, ivt = _open_period_features(period)
+    # Build the FULL Holton feature set over the (memory-sized) sub-window only.
+    # calculate_dynamics' eager metpy build OOMs over a full 20-yr period, so we
+    # never hand it more than one chunk's worth of time. The default (no
+    # sub_window) keeps the whole period, matching single-shot small windows.
+    window = sub_window if (sub_window is not None and sub_window != period) else period
+    feats, ivt = _open_period_features(window)
 
     if fixed_threshold is not None:
         # Sensitivity test: uniform threshold, no period-internal climatology.
         clim = ar_detection.constant_climatology(ivt, fixed_threshold)
     else:
-        # Period-internal climatology cached under a period-specific filename.
-        # Pass IVT at its natural time chunking (DEFAULT_CHUNKS time=24): the
-        # climatology loops per calendar month and rechunks each month to one
-        # time chunk on its own. Forcing the full period into a single chunk
-        # here makes every month's selection drag in all 20 yr of upstream
-        # pressure-level fields, which OOMed the 1940-59 / 1980-99 jobs at 191 GB.
-        clim = ar_detection.compute_ivt_climatology(ivt, period=period)
-
-    if sub_window is not None and sub_window != period:
-        feats = feats.sel(time=slice(*sub_window))
+        # Period-internal climatology over the FULL period, cached per-period.
+        # It is computed from the *light* IVT-only path (integrated_vapor_transport),
+        # streamed one year at a time inside compute_ivt_climatology — NOT from
+        # calculate_dynamics, whose eager PV/Eady build over 20 yr OOMs at ~191 GB.
+        clim_ivt = physics_pipeline.integrated_vapor_transport(_open_raw_era5(period))["ivt"]
+        clim = ar_detection.compute_ivt_climatology(clim_ivt, period=period)
 
     mask_lazy = ar_detection.compute_ar_mask(feats["ivt"], feats["ivt_u"], feats["ivt_v"], clim)
     intensity = (mask_lazy.astype("float32") * feats["ivt"]).rename("ar_intensity")

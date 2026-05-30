@@ -65,11 +65,20 @@ def compute_ivt_climatology(
     ``kg m⁻¹ s⁻¹``. Materialises and caches at
     ``CACHE_DIR / "ivt_climatology_<period>.zarr"``.
 
-    The earlier ``window.chunk({'time': -1}).groupby('time.month').quantile(...)``
-    pattern forced the full-period IVT into one Dask chunk and reliably OOMed
-    a 20 GB cgroup. We instead loop per calendar month and ``compute()`` each
-    month's quantile in turn; the peak working set is one month of IVT
-    (≈100-500 MB for our periods) rather than the full period.
+    Memory note — why per-year streaming, not one big reduction:
+    IVT is a single 2-D field per timestep (~130 MB per year for a 6-hourly
+    regional bbox), so the whole multi-decade period is only a few GB once
+    materialised. But handing dask's synchronous scheduler a single
+    full-period graph — whether via ``.compute()`` on the lot, a
+    ``.chunk({'time': -1})`` rechunk barrier, or a per-month boolean select
+    over the lazy graph — makes it retain every level-resolved ``q*u`` / ``q*v``
+    intermediate at once and OOM-kills a 20-yr window at ~191 GB. We instead
+    materialise IVT in **independent per-year ``compute()`` batches** (each
+    year's graph is built, computed and released before the next), concatenate
+    the small in-memory results, then take the per-calendar-month quantile in
+    memory. ``ivt`` must come from the light ``integrated_vapor_transport`` path,
+    NOT ``calculate_dynamics`` (whose eager metpy PV/Eady build OOMs on its own
+    over a 20-yr span).
     """
     cache_path = (
         config.CACHE_DIR
@@ -81,17 +90,24 @@ def compute_ivt_climatology(
     config.CACHE_DIR.mkdir(parents=True, exist_ok=True)
     window = ivt.sel(time=slice(*period))
 
+    # Materialise IVT one year at a time so each year's dask graph is fully
+    # released before the next is built (bounded working set, ~6 GB observed
+    # for a 20-yr window vs >50 GB for a single full-period compute).
+    y0, y1 = int(period[0][:4]), int(period[1][:4])
+    pieces: list[xr.DataArray] = []
+    for y in range(y0, y1 + 1):
+        yr = window.sel(time=slice(f"{y}-01-01", f"{y}-12-31"))
+        if yr.sizes.get("time", 0):
+            pieces.append(yr.compute())
+    if not pieces:  # pragma: no cover - empty period guard
+        raise ValueError(f"no IVT timesteps in period {period}")
+    window_mem = xr.concat(pieces, dim="time") if len(pieces) > 1 else pieces[0]
+
+    # Per-calendar-month quantile, now a cheap in-memory (numpy) reduction.
     months: list[xr.DataArray] = []
     for m in range(1, 13):
-        sub = window.sel(time=window["time"].dt.month == m)
-        # Rechunk to a single time chunk *for this month only* — quantile needs
-        # the reduced dim in one chunk, and one month of IVT (~hundreds of MB)
-        # is a bounded working set. We deliberately do NOT rely on the caller
-        # collapsing the full period to one chunk: that forces dask to compute
-        # all upstream pressure-level fields for the entire window to extract
-        # any single month, which OOMs the 20-yr windows at ~191 GB.
-        mq = sub.chunk({"time": -1}).quantile(quantile, dim="time").compute()
-        mq = mq.expand_dims(month=[m])
+        sub = window_mem.sel(time=window_mem["time"].dt.month == m)
+        mq = sub.quantile(quantile, dim="time").expand_dims(month=[m])
         months.append(mq)
 
     clim = xr.concat(months, dim="month").astype("float32").rename("ivt_climatology")
