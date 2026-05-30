@@ -116,6 +116,91 @@ def _density(
     )
 
 
+_WIN_COLOR = {
+    "pre_sat_1940_1959": "#3b6ea5",
+    "modern_1980_1999": "#e08a1e",
+    "recent_2015_2024": "#c0392b",
+}
+
+
+def _plot_observed_only(observed: dict[str, pd.DataFrame]) -> plt.Figure:
+    """Clean landfall figure: per-window density maps (top) plus the
+    landfall-latitude distribution with medians (bottom), so the poleward shift
+    is actually visible rather than hidden in three look-alike blobs."""
+    import cartopy.crs as ccrs
+    import cartopy.feature as cfeature
+    from scipy.stats import gaussian_kde
+
+    apply_nature_style()
+    proj = ccrs.PlateCarree()
+    lat_min, lat_max = config.BBOX["lat_min"], config.BBOX["lat_max"]
+    lon_min, lon_max = config.BBOX["lon_min"], config.BBOX["lon_max"]
+    grid_lon = np.linspace(lon_min - 360, lon_max - 360, 81)
+    grid_lat = np.linspace(lat_min, lat_max, 71)
+
+    counts = [len(observed[p]) for p in _OBS_ORDER if observed.get(p) is not None]
+    vmax = max(counts) / 50.0 if counts else 1.0
+
+    fig = plt.figure(figsize=(COL_DOUBLE_IN, COL_DOUBLE_IN * 0.66))
+    gs = fig.add_gridspec(2, 3, height_ratios=[1.35, 1.0], hspace=0.30, wspace=0.06)
+
+    # Top row: one clean map per window (light land, thin coast, no busy grid).
+    for i, p in enumerate(_OBS_ORDER):
+        ax = fig.add_subplot(gs[0, i], projection=proj)
+        ax.set_extent([lon_min - 360, lon_max - 360, lat_min, lat_max], crs=proj)
+        ax.add_feature(cfeature.LAND, facecolor="0.95", zorder=0)
+        ax.add_feature(cfeature.COASTLINE.with_scale("50m"), linewidth=0.5, edgecolor="0.3")
+        ax.add_feature(cfeature.STATES.with_scale("50m"), linewidth=0.15, edgecolor="0.75")
+        df = observed.get(p)
+        if df is not None and len(df):
+            _density(ax, df, grid_lon, grid_lat, vmax)
+            med = float(df["landfall_lat"].median())
+            ax.axhline(med, color=_WIN_COLOR[p], lw=0.9, ls="--", alpha=0.95)
+        ax.set_title(f"({chr(97 + i)}) {_OBS_LABEL.get(p, p)}", fontsize=6.5)
+
+    cax = fig.add_axes([0.915, 0.56, 0.012, 0.32])
+    sm = plt.cm.ScalarMappable(cmap="magma", norm=plt.matplotlib.colors.Normalize(0, vmax))
+    sm.set_array([])
+    cb = fig.colorbar(sm, cax=cax)
+    cb.set_label("landfall density (a.u.)", fontsize=5.5)
+    cb.ax.tick_params(labelsize=5)
+
+    # Bottom: landfall-latitude density curves with medians (the shift).
+    axc = fig.add_subplot(gs[1, :])
+    xs = np.linspace(lat_min, lat_max, 320)
+    meds = {}
+    for p in _OBS_ORDER:
+        df = observed.get(p)
+        if df is None:
+            continue
+        lat = df["landfall_lat"].dropna().to_numpy(dtype="float64")
+        if lat.size < 5:
+            continue
+        meds[p] = float(np.median(lat))
+        kde = gaussian_kde(lat, bw_method=0.3)
+        axc.plot(xs, kde(xs), color=_WIN_COLOR[p], lw=1.5,
+                 label=f"{_OBS_LABEL.get(p, p)}  (median {meds[p]:.1f}°N)")
+        axc.axvline(meds[p], color=_WIN_COLOR[p], lw=0.8, ls=":")
+    if "pre_sat_1940_1959" in meds and "recent_2015_2024" in meds:
+        shift = meds["recent_2015_2024"] - meds["pre_sat_1940_1959"]
+        axc.annotate(f"poleward shift {shift:+.1f}° (recent − pre-sat)",
+                     xy=(0.98, 0.92), xycoords="axes fraction", ha="right",
+                     fontsize=6, color="0.25")
+    axc.set_xlabel("AR landfall latitude (°N)", fontsize=7)
+    axc.set_ylabel("density", fontsize=7)
+    axc.set_xlim(lat_min, lat_max)
+    axc.tick_params(labelsize=6)
+    axc.legend(fontsize=5.5, frameon=False, loc="upper left")
+    axc.set_title("(d) Landfall-latitude distribution across the three windows",
+                  fontsize=6.5, loc="left")
+    for s in ("top", "right"):
+        axc.spines[s].set_visible(False)
+
+    fig.suptitle("Where US West Coast atmospheric rivers make landfall", fontsize=8)
+    fig.subplots_adjust(left=0.04, right=0.90, top=0.93, bottom=0.10)
+    return fig
+
+
 def plot(
     observed: dict[str, pd.DataFrame],
     projected: dict[str, pd.DataFrame],
@@ -131,9 +216,9 @@ def plot(
 
     apply_nature_style()
     if observed_only:
-        projected = {}
-        nrows, ncols = 1, 3
-        fig = plt.figure(figsize=(COL_DOUBLE_IN, COL_DOUBLE_IN * 0.40))
+        return _plot_observed_only(observed)
+    if False:
+        pass
     else:
         nrows, ncols = 2, 4
         fig = plt.figure(figsize=(COL_DOUBLE_IN, COL_DOUBLE_IN * 0.55))
