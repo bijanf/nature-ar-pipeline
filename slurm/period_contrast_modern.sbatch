@@ -12,12 +12,16 @@
 # concat_and_figures.sbatch.
 #SBATCH --job-name=arpc_modern
 #SBATCH --partition=standard
-#SBATCH --qos=medium
+# short QOS (higher CPU group limit, less contended than medium) + right-sized
+# memory. With the climatology pre-cached and feats built per 5-yr chunk, peak
+# is ~50 GB (validated) so 96G is ample; 192G needlessly forced ~36 CPUs and
+# tripped the medium-QOS group CPU limit. Each window finishes in <1 h.
+#SBATCH --qos=short
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4
-#SBATCH --mem=192G
-#SBATCH --time=36:00:00
+#SBATCH --mem=96G
+#SBATCH --time=12:00:00
 #SBATCH --output=slurm/logs/%x.%j.out
 #SBATCH --error=slurm/logs/%x.%j.err
 
