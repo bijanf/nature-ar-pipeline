@@ -1,20 +1,17 @@
 """
-Figure 1 — Pipeline schematic.
+Figure 1 — Observational pipeline schematic.
 
-Two-column overview of the data flow:
+A clean top-to-bottom flow of the actual (machine-learning-free) pipeline:
 
-    ARCO-ERA5  ->  Holton-features  ->  GW detector  ->  Stage 1 (LightGBM)
-                                                                |
-                                                                v
-                                        event_post  --  Stage 2 quantile regression
-                                                                |
-                                                                v
-                              CMIP6 four-SSP (regridded) --> direct + delta inference
-                                                                |
-                                                                v
-                                                       SHAP θ_e vs PV attribution
+    ERA5 reanalysis
+        -> moisture transport & dynamics (IVT, IWV, theta_e, PV)
+        -> Guan-Waliser AR detection (period-internal 85th-pct IVT)
+        -> event extraction (intensity, footprint, duration, landfall)
+        -> { three-window period contrast ;  thermodynamic/dynamic split }
 
-The figure is pure vector matplotlib — no data dependency.
+Pure vector matplotlib, no data dependency. Designed for legibility: evenly
+spaced rounded cards, a single clean arrow spine, one symmetric branch at the
+end, and no overlapping elements.
 """
 
 from __future__ import annotations
@@ -24,78 +21,86 @@ from pathlib import Path
 
 import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
+from matplotlib.patches import FancyArrowPatch, FancyBboxPatch
 
-from src.figures._style import COL_DOUBLE_IN, apply_nature_style
+from src.figures._style import COL_SINGLE_IN, apply_nature_style
 
-_BOXES: tuple[tuple[float, float, float, float, str], ...] = (
-    # (x, y, w, h, label)
-    (0.04, 0.66, 0.22, 0.20, "ARCO-ERA5\n(Pangeo, streamed)"),
-    (0.30, 0.66, 0.22, 0.20, "Holton features\nIVT, θe, PV, σBI"),
-    (0.56, 0.66, 0.22, 0.20, "Guan-Waliser\nAR mask"),
-    (0.18, 0.36, 0.22, 0.20, "Stage 1\nLGBM linear-tree"),
-    (0.46, 0.36, 0.22, 0.20, "Events\n3-D label"),
-    (0.74, 0.36, 0.22, 0.20, "Stage 2\nquantile reg.\nα=0.05/0.50/0.95"),
-    (0.04, 0.06, 0.30, 0.20, "CMIP6 4-SSP\n(SSP2-4.5/3-7.0/4-6.0/5-8.5)"),
-    (0.38, 0.06, 0.22, 0.20, "direct +\ndelta inference"),
-    (0.64, 0.06, 0.30, 0.20, "SHAP attribution\nθe vs PV per landfall band"),
-)
+# Palette: muted, print-friendly. Source (blue), process (slate), output (green).
+_SRC = dict(fc="#e6eef7", ec="#3b6ea5")
+_PROC = dict(fc="#eef1f4", ec="#566573")
+_DET = dict(fc="#e6f0ee", ec="#2f7d6b")   # detection — the methodological heart
+_OUT = dict(fc="#e9f3ea", ec="#3c7d52")
 
-_ARROWS: tuple[tuple[int, int], ...] = (
-    (0, 1),
-    (1, 2),
-    (1, 3),
-    (3, 4),
-    (4, 5),
-    (6, 7),
-    (7, 8),
-    (5, 7),
-)
+_TITLE_KW = dict(ha="center", va="center", fontsize=7.6, fontweight="bold", color="#1b2733")
+_SUB_KW = dict(ha="center", va="center", fontsize=6.2, color="#3d4a57")
 
 
-def build_figure() -> plt.Figure:
+def _card(ax, cx, cy, w, h, title, sub, style):
+    box = FancyBboxPatch(
+        (cx - w / 2, cy - h / 2), w, h,
+        boxstyle="round,pad=0.02,rounding_size=0.10",
+        linewidth=1.1, facecolor=style["fc"], edgecolor=style["ec"], zorder=2,
+    )
+    ax.add_patch(box)
+    ax.text(cx, cy + h * 0.17, title, zorder=3, **_TITLE_KW)
+    ax.text(cx, cy - h * 0.22, sub, zorder=3, **_SUB_KW)
+
+
+def _arrow(ax, x0, y0, x1, y1, color="#566573"):
+    ax.add_patch(FancyArrowPatch(
+        (x0, y0), (x1, y1), arrowstyle="-|>", mutation_scale=11,
+        linewidth=1.2, color=color, zorder=1,
+        shrinkA=0, shrinkB=0,
+    ))
+
+
+def plot(out_path: Path) -> Path:
     apply_nature_style()
-    fig, ax = plt.subplots(figsize=(COL_DOUBLE_IN, COL_DOUBLE_IN * 0.55))
-    ax.set_xlim(0, 1)
-    ax.set_ylim(0, 1)
-    ax.set_axis_off()
+    fig, ax = plt.subplots(figsize=(COL_SINGLE_IN * 1.32, COL_SINGLE_IN * 1.46))
+    ax.set_xlim(0, 10)
+    ax.set_ylim(0, 10)
+    ax.axis("off")
 
-    centres: list[tuple[float, float]] = []
-    for x, y, w, h, label in _BOXES:
-        rect = mpatches.FancyBboxPatch(
-            (x, y),
-            w,
-            h,
-            boxstyle="round,pad=0.005,rounding_size=0.012",
-            linewidth=0.6,
-            edgecolor="black",
-            facecolor="#f0f0f0",
-        )
-        ax.add_patch(rect)
-        ax.text(x + w / 2, y + h / 2, label, ha="center", va="center", fontsize=6)
-        centres.append((x + w / 2, y + h / 2))
+    cx = 5.0
+    w_main, h = 7.4, 1.18
+    ys = [8.85, 7.05, 5.25, 3.45]            # four stacked stages
+    stages = [
+        ("ERA5 reanalysis", "1940–2024  ·  6-hourly  ·  0.25°  ·  CDS", _SRC),
+        ("Moisture transport & dynamics", "IVT, IWV, $\\theta_e$, PV  (850 / 500 / 250 hPa)", _PROC),
+        ("Atmospheric-river detection", "Guan–Waliser  ·  period-internal 85th-pct IVT", _DET),
+        ("Event extraction", "intensity · footprint · duration · landfall", _PROC),
+    ]
+    for (title, sub, style), y in zip(stages, ys):
+        _card(ax, cx, y, w_main, h, title, sub, style)
+    # Spine arrows between consecutive stages.
+    for ytop, ybot in zip(ys[:-1], ys[1:]):
+        _arrow(ax, cx, ytop - h / 2, cx, ybot + h / 2)
 
-    for src_idx, dst_idx in _ARROWS:
-        x0, y0 = centres[src_idx]
-        x1, y1 = centres[dst_idx]
-        ax.annotate(
-            "",
-            xy=(x1, y1),
-            xytext=(x0, y0),
-            arrowprops={"arrowstyle": "->", "lw": 0.5, "color": "black"},
-        )
+    # Symmetric branch from "Event extraction" into the two analyses.
+    y_out = 1.25
+    junction_y = 2.18
+    lx, rx, w_out = 2.55, 7.45, 4.5
+    _arrow(ax, cx, ys[-1] - h / 2, cx, junction_y + 0.02)        # down to junction
+    ax.plot([lx, rx], [junction_y, junction_y], color="#566573", lw=1.2, zorder=1)  # cross-bar
+    _arrow(ax, lx, junction_y, lx, y_out + h / 2)
+    _arrow(ax, rx, junction_y, rx, y_out + h / 2)
+    _card(ax, lx, y_out, w_out, h, "Three-window contrast",
+          "intensity trajectory  →  Fig. 2, 4", _OUT)
+    _card(ax, rx, y_out, w_out, h, "Thermo / dynamic split",
+          "IVT = IWV·$\\hat{V}$  →  Fig. 3", _OUT)
 
-    return fig
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out_path, bbox_inches="tight", pad_inches=0.04)
+    plt.close(fig)
+    print(f"wrote {out_path}")
+    return out_path
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--out", type=str, default="figures/fig1_pipeline_schematic.pdf")
-    args = parser.parse_args()
-    out_path = Path(args.out)
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    fig = build_figure()
-    fig.savefig(out_path)
-    print(f"wrote {out_path}")
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--out", type=Path, default=Path("figures") / "fig1_pipeline_schematic.pdf")
+    args = ap.parse_args()
+    plot(args.out)
 
 
 if __name__ == "__main__":
