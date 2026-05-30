@@ -54,7 +54,8 @@ def _arrow(ax, x0, y0, x1, y1, color="#566573"):
     ))
 
 
-def plot(out_path: Path) -> Path:
+def build_figure():
+    """Build and return the schematic Figure (no file I/O) — used by tests."""
     apply_nature_style()
     fig, ax = plt.subplots(figsize=(COL_SINGLE_IN * 1.32, COL_SINGLE_IN * 1.46))
     ax.set_xlim(0, 10)
@@ -88,7 +89,11 @@ def plot(out_path: Path) -> Path:
           "intensity trajectory  →  Fig. 2, 4", _OUT)
     _card(ax, rx, y_out, w_out, h, "Thermo / dynamic split",
           "IVT = IWV·$\\hat{V}$  →  Fig. 3", _OUT)
+    return fig
 
+
+def plot(out_path: Path) -> Path:
+    fig = build_figure()
     out_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out_path, bbox_inches="tight", pad_inches=0.04)
     plt.close(fig)
