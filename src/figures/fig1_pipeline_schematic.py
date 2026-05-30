@@ -86,9 +86,9 @@ def build_figure():
     _arrow(ax, lx, junction_y, lx, y_out + h / 2)
     _arrow(ax, rx, junction_y, rx, y_out + h / 2)
     _card(ax, lx, y_out, w_out, h, "Three-window contrast",
-          "intensity trajectory  →  Fig. 2, 4", _OUT)
+          "intensity trajectory  →  Fig. 2, 5", _OUT)
     _card(ax, rx, y_out, w_out, h, "Thermo / dynamic split",
-          "IVT = IWV·$\\hat{V}$  →  Fig. 3", _OUT)
+          "IVT = IWV·$\\hat{V}$  →  Fig. 4", _OUT)
     return fig
 
 
