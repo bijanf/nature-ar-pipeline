@@ -13,6 +13,12 @@ conda activate nature-ar-pipeline
 # loads xarray / shapely / xesmf with numpy 2.x.
 export PYTHONNOUSERSITE=1
 
+# Never write core dumps: a single netCDF4/HDF5 segfault dumps an ~8.6 GB core
+# into the run dir, and $HOME is not for bulk data. The path that used to
+# segfault (double-opening overlapping HDF5 files) is fixed; keep this as a
+# guard so any future crash can't fill the disk.
+ulimit -c 0 2>/dev/null || true
+
 cd /home/fallah/scripts/nature-ar-pipeline
 
 # Dask memory thresholds. Defaults trip OOM-killers on ARCO-ERA5 multi-year

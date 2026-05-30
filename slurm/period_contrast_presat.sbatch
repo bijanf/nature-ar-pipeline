@@ -17,7 +17,7 @@
 
 source slurm/_common.sh
 
-export ERA5_LOCAL_CACHE=/home/fallah/scripts/nature-ar-pipeline/data/cache/era5_bbox_local
+export ERA5_LOCAL_CACHE=/p/projects/poem/fallah/nature_ar_data/era5_bbox_local
 
 for RANGE in "1940-01-01:1944-12-31" \
              "1945-01-01:1949-12-31" \

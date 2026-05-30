@@ -23,7 +23,7 @@
 
 source slurm/_common.sh
 
-export ERA5_LOCAL_CACHE=/home/fallah/scripts/nature-ar-pipeline/data/cache/era5_bbox_local
+export ERA5_LOCAL_CACHE=/p/projects/poem/fallah/nature_ar_data/era5_bbox_local
 
 # Climatology will land on the first --time-range pass and be reused
 # for the remainder. Each chunk writes its own per-suffix parquet.

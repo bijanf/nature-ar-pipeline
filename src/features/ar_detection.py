@@ -54,6 +54,33 @@ _KM_PER_DEG_LAT = 111.0
 # =============================================================================
 
 
+def _ivt_climatology_cache_path(
+    period: tuple[str, str],
+    quantile: float = config.GW_CLIM_QUANTILE,
+):
+    return (
+        config.CACHE_DIR
+        / f"ivt_climatology_{period[0][:4]}_{period[1][:4]}_q{int(quantile * 100):02d}.zarr"
+    )
+
+
+def load_ivt_climatology(
+    period: tuple[str, str] = config.TRAIN_PERIOD,
+    quantile: float = config.GW_CLIM_QUANTILE,
+) -> xr.DataArray | None:
+    """Return the cached climatology for ``period`` if present, else ``None``.
+
+    Lets callers avoid opening the (large) full-period raw ERA5 just to feed
+    :func:`compute_ivt_climatology` when the result is already on disk — opening
+    the full period's NetCDF files on top of an already-open overlapping
+    sub-window double-opens the same HDF5 files and segfaults.
+    """
+    cache_path = _ivt_climatology_cache_path(period, quantile)
+    if cache_path.exists():
+        return xr.open_zarr(cache_path)["ivt_climatology"]
+    return None
+
+
 def compute_ivt_climatology(
     ivt: xr.DataArray,
     period: tuple[str, str] = config.TRAIN_PERIOD,
@@ -80,10 +107,7 @@ def compute_ivt_climatology(
     NOT ``calculate_dynamics`` (whose eager metpy PV/Eady build OOMs on its own
     over a 20-yr span).
     """
-    cache_path = (
-        config.CACHE_DIR
-        / f"ivt_climatology_{period[0][:4]}_{period[1][:4]}_q{int(quantile * 100):02d}.zarr"
-    )
+    cache_path = _ivt_climatology_cache_path(period, quantile)
     if cache_path.exists():
         return xr.open_zarr(cache_path)["ivt_climatology"]
 

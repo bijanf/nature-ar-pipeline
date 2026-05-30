@@ -130,23 +130,34 @@ def _events_for_period(
     fixed-threshold sensitivity test. The same value is used for every period so
     that any remaining inter-period shift cannot be an artefact of threshold drift.
     """
-    # Build the FULL Holton feature set over the (memory-sized) sub-window only.
-    # calculate_dynamics' eager metpy build OOMs over a full 20-yr period, so we
-    # never hand it more than one chunk's worth of time. The default (no
+    # The FULL Holton feature set is built over the (memory-sized) sub-window
+    # only: calculate_dynamics' eager metpy build OOMs over a full 20-yr period,
+    # so it never sees more than one chunk's worth of time. The default (no
     # sub_window) keeps the whole period, matching single-shot small windows.
     window = sub_window if (sub_window is not None and sub_window != period) else period
-    feats, ivt = _open_period_features(window)
 
     if fixed_threshold is not None:
-        # Sensitivity test: uniform threshold, no period-internal climatology.
+        # Sensitivity test: uniform threshold, no period-internal climatology —
+        # only the sub-window is ever opened.
+        feats, ivt = _open_period_features(window)
         clim = ar_detection.constant_climatology(ivt, fixed_threshold)
+    elif (cached := ar_detection.load_ivt_climatology(period)) is not None:
+        # Climatology already on disk (the normal chunked-run case): open ONLY
+        # the sub-window. Crucially we do NOT also open the full period here —
+        # its NetCDF files overlap the sub-window's already-open files, and
+        # double-opening the same HDF5 files in one process segfaults.
+        feats, ivt = _open_period_features(window)
+        clim = cached
     else:
-        # Period-internal climatology over the FULL period, cached per-period.
-        # It is computed from the *light* IVT-only path (integrated_vapor_transport),
-        # streamed one year at a time inside compute_ivt_climatology — NOT from
-        # calculate_dynamics, whose eager PV/Eady build over 20 yr OOMs at ~191 GB.
-        clim_ivt = physics_pipeline.integrated_vapor_transport(_open_raw_era5(period))["ivt"]
+        # First run for this period (no cached climatology): open the full
+        # period ONCE and derive BOTH the climatology IVT and the sub-window
+        # features from those same file handles, so no month is opened twice.
+        ds_full = _open_raw_era5(period)
+        clim_ivt = physics_pipeline.integrated_vapor_transport(ds_full)["ivt"]
         clim = ar_detection.compute_ivt_climatology(clim_ivt, period=period)
+        ds_sub = ds_full.sel(time=slice(*window)) if window != period else ds_full
+        feats = physics_pipeline.calculate_dynamics(ds_sub)
+        ivt = feats["ivt"]
 
     mask_lazy = ar_detection.compute_ar_mask(feats["ivt"], feats["ivt_u"], feats["ivt_v"], clim)
     intensity = (mask_lazy.astype("float32") * feats["ivt"]).rename("ar_intensity")

@@ -22,7 +22,7 @@
 
 source slurm/_common.sh
 
-export ERA5_LOCAL_CACHE=/home/fallah/scripts/nature-ar-pipeline/data/cache/era5_bbox_local
+export ERA5_LOCAL_CACHE=/p/projects/poem/fallah/nature_ar_data/era5_bbox_local
 
 # Step 1: assemble training rows from Modern.
 python -m src.data.era5_train_assembly --period 1980-2014 --overwrite
