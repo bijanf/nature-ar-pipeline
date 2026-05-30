@@ -10,12 +10,16 @@
 # Writes data/cache/period_contrast_fixed250.parquet (and the per-period parts).
 #SBATCH --job-name=arpc_fixed250
 #SBATCH --partition=standard
-#SBATCH --qos=medium
+# short QOS + right-sized mem (matches the main arpc jobs). The fixed-threshold
+# path uses a constant climatology — no full-period open, no climatology compute
+# — so it is lighter than the main run; 96G is ample and dodges the medium-QOS
+# CPU group limit.
+#SBATCH --qos=short
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4
-#SBATCH --mem=192G
-#SBATCH --time=36:00:00
+#SBATCH --mem=96G
+#SBATCH --time=12:00:00
 #SBATCH --output=slurm/logs/%x.%j.out
 #SBATCH --error=slurm/logs/%x.%j.err
 
