@@ -35,9 +35,6 @@ htmlcov/
 # Editor and tooling caches
 .vscode/
 .idea/
-.cursor/
-.aider/
-.claude/
 *.swp
 *.swo
 *~
@@ -85,10 +82,6 @@ manuscript/main.out
 manuscript/main.tex
 manuscript/main_body.tex
 manuscript/*.snapshot
-
-# Local-only notes
-CLAUDE.md
-nature_directive.md
 
 # OS / misc
 Thumbs.db
