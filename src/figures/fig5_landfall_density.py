@@ -156,14 +156,14 @@ def _plot_observed_only(observed: dict[str, pd.DataFrame]) -> plt.Figure:
             _density(ax, df, grid_lon, grid_lat, vmax)
             med = float(df["landfall_lat"].median())
             ax.axhline(med, color=_WIN_COLOR[p], lw=0.9, ls="--", alpha=0.95)
-        ax.set_title(f"({chr(97 + i)}) {_OBS_LABEL.get(p, p)}", fontsize=6.5)
+        ax.set_title(f"({chr(97 + i)}) {_OBS_LABEL.get(p, p)}", fontsize=8)
 
     cax = fig.add_axes([0.915, 0.56, 0.012, 0.32])
     sm = plt.cm.ScalarMappable(cmap="magma", norm=plt.matplotlib.colors.Normalize(0, vmax))
     sm.set_array([])
     cb = fig.colorbar(sm, cax=cax)
-    cb.set_label("landfall density (a.u.)", fontsize=5.5)
-    cb.ax.tick_params(labelsize=5)
+    cb.set_label("landfall density (a.u.)", fontsize=7.5)
+    cb.ax.tick_params(labelsize=7)
 
     # Bottom: landfall-latitude density curves with medians (the shift).
     axc = fig.add_subplot(gs[1, :])
@@ -178,25 +178,24 @@ def _plot_observed_only(observed: dict[str, pd.DataFrame]) -> plt.Figure:
             continue
         meds[p] = float(np.median(lat))
         kde = gaussian_kde(lat, bw_method=0.3)
-        axc.plot(xs, kde(xs), color=_WIN_COLOR[p], lw=1.5,
-                 label=f"{_OBS_LABEL.get(p, p)}  (median {meds[p]:.1f}°N)")
+        axc.plot(
+            xs,
+            kde(xs),
+            color=_WIN_COLOR[p],
+            lw=1.5,
+            label=f"{_OBS_LABEL.get(p, p)}  (median {meds[p]:.1f}°N)",
+        )
         axc.axvline(meds[p], color=_WIN_COLOR[p], lw=0.8, ls=":")
-    if "pre_sat_1940_1959" in meds and "recent_2015_2024" in meds:
-        shift = meds["recent_2015_2024"] - meds["pre_sat_1940_1959"]
-        axc.annotate(f"poleward shift {shift:+.1f}° (recent − pre-sat)",
-                     xy=(0.98, 0.92), xycoords="axes fraction", ha="right",
-                     fontsize=6, color="0.25")
-    axc.set_xlabel("AR landfall latitude (°N)", fontsize=7)
-    axc.set_ylabel("density", fontsize=7)
+    # (poleward-shift value stated in the caption, not annotated on the figure)
+    axc.set_xlabel("AR landfall latitude (°N)", fontsize=8.5)
+    axc.set_ylabel("density", fontsize=8.5)
     axc.set_xlim(lat_min, lat_max)
-    axc.tick_params(labelsize=6)
-    axc.legend(fontsize=5.5, frameon=False, loc="upper left")
-    axc.set_title("(d) Landfall-latitude distribution across the three windows",
-                  fontsize=6.5, loc="left")
+    axc.tick_params(labelsize=7.5)
+    axc.legend(fontsize=7, frameon=False, loc="upper left")
+    axc.set_title("(d) Landfall-latitude distribution", fontsize=8, loc="left")
     for s in ("top", "right"):
         axc.spines[s].set_visible(False)
-
-    fig.suptitle("Where US West Coast atmospheric rivers make landfall", fontsize=8)
+    # (no in-figure suptitle; described in the caption)
     fig.subplots_adjust(left=0.04, right=0.90, top=0.93, bottom=0.10)
     return fig
 
@@ -233,9 +232,7 @@ def plot(
     counts = [len(df) for df in (*observed.values(), *projected.values()) if df is not None]
     vmax = max(counts) / 50.0 if counts else 1.0
 
-    panels = [
-        (i, _OBS_LABEL.get(p, p), observed.get(p)) for i, p in enumerate(_OBS_ORDER, start=1)
-    ]
+    panels = [(i, _OBS_LABEL.get(p, p), observed.get(p)) for i, p in enumerate(_OBS_ORDER, start=1)]
     if not observed_only:
         panels += [(5 + i, _SSP_LABEL[s], projected.get(s)) for i, s in enumerate(_SSP_ORDER)]
 
@@ -255,7 +252,8 @@ def plot(
     cb.ax.tick_params(labelsize=5)
 
     title = (
-        "Landfall corridor across three observational windows" if observed_only
+        "Landfall corridor across three observational windows"
+        if observed_only
         else "Landfall corridor along the observed-then-projected trajectory"
     )
     fig.suptitle(title, fontsize=7)

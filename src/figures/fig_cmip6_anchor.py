@@ -21,7 +21,7 @@ from pathlib import Path
 import numpy as np
 
 from src import config
-from src.figures._style import apply_nature_style, COL_DOUBLE_IN
+from src.figures._style import COL_DOUBLE_IN, apply_nature_style
 from src.figures.fig_global_ar_regions import _REGIONS
 
 _DYN = {"Western Europe", "Amazon outflow", "East Asia", "SE South America"}
@@ -37,10 +37,12 @@ def _frac(rows):
 
 def plot(out_path: Path) -> Path:
     import matplotlib.pyplot as plt
+
     apply_nature_style()
     obs = json.loads((config.CACHE_DIR / "decomposition.json").read_text())["full"]
     mod = json.loads((config.CACHE_DIR / "cmip6_decomp.json").read_text())["corridors"]
-    fo = _frac(obs); fm = _frac(mod)
+    fo = _frac(obs)
+    fm = _frac(mod)
 
     names = [n for n, *_ in _REGIONS]
     names = sorted(names, key=lambda n: -fo[n])
@@ -56,17 +58,32 @@ def plot(out_path: Path) -> Path:
     # annotate the SE South America >100% (negative-thermo) observed case
     for i, n in enumerate(names):
         if fo[n] > 155:
-            ax.text(158, i + h / 2, f"{fo[n]:.0f}%→", va="center", ha="right",
-                    fontsize=6.5, color="#16415f")
-    ax.set_yticks(yy); ax.set_yticklabels(names, fontsize=8)
-    for tick, n in zip(ax.get_yticklabels(), names):
+            ax.text(
+                158,
+                i + h / 2,
+                f"{fo[n]:.0f}%→",
+                va="center",
+                ha="right",
+                fontsize=6.5,
+                color="#16415f",
+            )
+    ax.set_yticks(yy)
+    ax.set_yticklabels(names, fontsize=8)
+    for tick, n in zip(ax.get_yticklabels(), names, strict=False):
         tick.set_fontweight("bold" if n in _DYN else "normal")
     ax.set_xlabel("dynamic fraction of the corridor's IVT change (%)", fontsize=8.5)
     ax.tick_params(labelsize=7.5)
     # Place the key above the axes (two columns) so it never sits over the bars.
-    ax.legend(fontsize=7.5, frameon=False, loc="lower center",
-              bbox_to_anchor=(0.5, 1.01), ncol=2, handlelength=1.2,
-              columnspacing=1.6, borderaxespad=0.0)
+    ax.legend(
+        fontsize=7.5,
+        frameon=False,
+        loc="lower center",
+        bbox_to_anchor=(0.5, 1.01),
+        ncol=2,
+        handlelength=1.2,
+        columnspacing=1.6,
+        borderaxespad=0.0,
+    )
     for sp in ("top", "right"):
         ax.spines[sp].set_visible(False)
     out_path.parent.mkdir(parents=True, exist_ok=True)

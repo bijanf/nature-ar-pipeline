@@ -109,9 +109,7 @@ def test_run_propagates_time_range_to_events(tmp_path, monkeypatch) -> None:
             return object()
 
     monkeypatch.setattr(pc, "_events_for_period", fake_events)
-    monkeypatch.setattr(
-        "src.features.topography.open_era5_topography", lambda *a, **k: FakeTopo()
-    )
+    monkeypatch.setattr("src.features.topography.open_era5_topography", lambda *a, **k: FakeTopo())
 
     pc.run(
         periods=[("modern_1980_1999", config.MODERN_PERIOD)],
@@ -147,14 +145,21 @@ def test_open_period_features_detects_6hourly_cadence(monkeypatch) -> None:
             "u_component_of_wind": (("time", "level", "latitude", "longitude"), _f32(1)),
             "v_component_of_wind": (("time", "level", "latitude", "longitude"), _f32(2)),
             "temperature": (("time", "level", "latitude", "longitude"), 270 + _f32(3)),
-            "specific_humidity": (("time", "level", "latitude", "longitude"), 1e-3 * np.abs(_f32(4))),
+            "specific_humidity": (
+                ("time", "level", "latitude", "longitude"),
+                1e-3 * np.abs(_f32(4)),
+            ),
             "geopotential": (("time", "level", "latitude", "longitude"), 1e5 * np.abs(_f32(5))),
         },
         coords={"time": times, "level": levels, "latitude": lat, "longitude": lon},
     )
 
     monkeypatch.setattr(pc.physics_pipeline, "open_arco_era5", lambda *a, **k: ds)
-    monkeypatch.setattr(pc.physics_pipeline, "calculate_dynamics", lambda d: d.assign(ivt=d["u_component_of_wind"].isel(level=0)))
+    monkeypatch.setattr(
+        pc.physics_pipeline,
+        "calculate_dynamics",
+        lambda d: d.assign(ivt=d["u_component_of_wind"].isel(level=0)),
+    )
 
     feats, _ = pc._open_period_features(("2018-01-01", "2018-01-08"))
     # 6-hourly source × 7 days = 28 timesteps. No re-subsampling.
@@ -182,14 +187,21 @@ def test_open_period_features_subsamples_hourly_cadence(monkeypatch) -> None:
             "u_component_of_wind": (("time", "level", "latitude", "longitude"), _f32(1)),
             "v_component_of_wind": (("time", "level", "latitude", "longitude"), _f32(2)),
             "temperature": (("time", "level", "latitude", "longitude"), 270 + _f32(3)),
-            "specific_humidity": (("time", "level", "latitude", "longitude"), 1e-3 * np.abs(_f32(4))),
+            "specific_humidity": (
+                ("time", "level", "latitude", "longitude"),
+                1e-3 * np.abs(_f32(4)),
+            ),
             "geopotential": (("time", "level", "latitude", "longitude"), 1e5 * np.abs(_f32(5))),
         },
         coords={"time": times, "level": levels, "latitude": lat, "longitude": lon},
     )
 
     monkeypatch.setattr(pc.physics_pipeline, "open_arco_era5", lambda *a, **k: ds)
-    monkeypatch.setattr(pc.physics_pipeline, "calculate_dynamics", lambda d: d.assign(ivt=d["u_component_of_wind"].isel(level=0)))
+    monkeypatch.setattr(
+        pc.physics_pipeline,
+        "calculate_dynamics",
+        lambda d: d.assign(ivt=d["u_component_of_wind"].isel(level=0)),
+    )
 
     feats, _ = pc._open_period_features(("2018-01-01", "2018-01-02"))
     # 24 hourly → 4 6-hourly samples.

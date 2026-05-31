@@ -31,11 +31,26 @@ def _fake_pl(tmp_path, year: int, month: int) -> None:
     rng = np.random.default_rng(seed=year * 100 + month)
     ds = xr.Dataset(
         {
-            "u": (("valid_time", "pressure_level", "latitude", "longitude"), rng.standard_normal(shape).astype("float32")),
-            "v": (("valid_time", "pressure_level", "latitude", "longitude"), rng.standard_normal(shape).astype("float32")),
-            "t": (("valid_time", "pressure_level", "latitude", "longitude"), 250 + 30 * rng.standard_normal(shape).astype("float32")),
-            "q": (("valid_time", "pressure_level", "latitude", "longitude"), (1e-3 * rng.uniform(size=shape)).astype("float32")),
-            "z": (("valid_time", "pressure_level", "latitude", "longitude"), (1e5 * rng.uniform(size=shape)).astype("float32")),
+            "u": (
+                ("valid_time", "pressure_level", "latitude", "longitude"),
+                rng.standard_normal(shape).astype("float32"),
+            ),
+            "v": (
+                ("valid_time", "pressure_level", "latitude", "longitude"),
+                rng.standard_normal(shape).astype("float32"),
+            ),
+            "t": (
+                ("valid_time", "pressure_level", "latitude", "longitude"),
+                250 + 30 * rng.standard_normal(shape).astype("float32"),
+            ),
+            "q": (
+                ("valid_time", "pressure_level", "latitude", "longitude"),
+                (1e-3 * rng.uniform(size=shape)).astype("float32"),
+            ),
+            "z": (
+                ("valid_time", "pressure_level", "latitude", "longitude"),
+                (1e5 * rng.uniform(size=shape)).astype("float32"),
+            ),
         },
         coords={
             "valid_time": valid_time,
@@ -54,7 +69,10 @@ def _fake_sfc(tmp_path, year: int, month: int) -> None:
     valid_time = pd.date_range(f"{year}-{month:02d}-01", periods=n_t, freq="6h")
     ds = xr.Dataset(
         {
-            "sp": (("valid_time", "latitude", "longitude"), np.full((n_t, lat.size, lon.size), 1.0e5, dtype="float32")),
+            "sp": (
+                ("valid_time", "latitude", "longitude"),
+                np.full((n_t, lat.size, lon.size), 1.0e5, dtype="float32"),
+            ),
         },
         coords={"valid_time": valid_time, "latitude": lat, "longitude": lon},
     )
@@ -97,9 +115,11 @@ def test_open_local_netcdf_cache_renames_and_shifts(tmp_path) -> None:
         assert arco_name in ds.data_vars, f"missing {arco_name}"
 
     # Static z and pressure-level z must not collide.
-    assert ds[config.ERA5_VARS["z"]].dims == ("time", "level", "latitude", "longitude") or \
-           ds[config.ERA5_VARS["z"]].dims == ("valid_time", "level", "latitude", "longitude") or \
-           "level" in ds[config.ERA5_VARS["z"]].dims
+    assert (
+        ds[config.ERA5_VARS["z"]].dims == ("time", "level", "latitude", "longitude")
+        or ds[config.ERA5_VARS["z"]].dims == ("valid_time", "level", "latitude", "longitude")
+        or "level" in ds[config.ERA5_VARS["z"]].dims
+    )
     assert "level" not in ds[config.ERA5_SURFACE_VARS["z_sfc"]].dims
 
     # valid_time -> time, pressure_level -> level.
@@ -145,7 +165,12 @@ def _fake_pik_tp(pik_dir, year: int, month: int) -> None:
     valid_time = pd.date_range(f"{year}-{month:02d}-01", periods=24, freq="1h")
     rng = np.random.default_rng(seed=year * 1000 + month)
     ds = xr.Dataset(
-        {"tp": (("valid_time", "latitude", "longitude"), (1e-4 * rng.uniform(size=(24, lat.size, lon.size))).astype("float32"))},
+        {
+            "tp": (
+                ("valid_time", "latitude", "longitude"),
+                (1e-4 * rng.uniform(size=(24, lat.size, lon.size))).astype("float32"),
+            )
+        },
         coords={"valid_time": valid_time, "latitude": lat, "longitude": lon},
     )
     ds.to_netcdf(pik_dir / f"total_precipitation_{year}{month:02d}.nc")

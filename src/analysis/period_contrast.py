@@ -240,8 +240,11 @@ def run(
     for period_name, period in periods:
         sub_window = time_range if time_range is not None else period
         events = _events_for_period(
-            period_name, period, era5_topo,
-            sub_window=sub_window, fixed_threshold=fixed_threshold,
+            period_name,
+            period,
+            era5_topo,
+            sub_window=sub_window,
+            fixed_threshold=fixed_threshold,
         )
         all_events.append(events)
         summaries.append(summarise_period(events, period_name))
@@ -267,8 +270,7 @@ def concat_periods(suffixes: Iterable[str], out_suffix: str = "") -> Path:
     Story-A files that ``fig3_trajectory`` and ``fig5_landfall_density`` consume).
     """
     parts = [
-        pd.read_parquet(config.CACHE_DIR / f"observational_events_{s}.parquet")
-        for s in suffixes
+        pd.read_parquet(config.CACHE_DIR / f"observational_events_{s}.parquet") for s in suffixes
     ]
     events_df = pd.concat(parts, ignore_index=True)
     tag = f"_{out_suffix}" if out_suffix else ""
@@ -335,7 +337,9 @@ def main() -> None:
             sub = (start, end)
 
         out = run(
-            periods, out_suffix=args.out_suffix, time_range=sub,
+            periods,
+            out_suffix=args.out_suffix,
+            time_range=sub,
             fixed_threshold=args.fixed_threshold,
         )
 

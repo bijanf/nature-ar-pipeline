@@ -60,7 +60,7 @@ def fetch_window(name: str, years: range) -> Path:
         tmp.unlink(missing_ok=True)
         raise OSError(f"undersized download for {name}")
     os.replace(tmp, target)
-    print(f"wrote {target} ({target.stat().st_size/1e6:.0f} MB)")
+    print(f"wrote {target} ({target.stat().st_size / 1e6:.0f} MB)")
     return target
 
 

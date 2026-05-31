@@ -28,8 +28,8 @@ Exit code 0 always (this is a report, not a test); the verdict is in stdout.
 from __future__ import annotations
 
 import argparse
+import itertools
 import sys
-from pathlib import Path
 
 import pandas as pd
 
@@ -99,23 +99,33 @@ def main() -> int:
         for k, lbl in present:
             sub = ev[ev["period"] == k]
             n = len(sub)
-            lf_ok = (sub["land_fraction"] > 0).mean() * 100 if "land_fraction" in sub else float("nan")
-            land_ok = sub["landfall_lat"].notna().mean() * 100 if "landfall_lat" in sub else float("nan")
-            print(f"    {lbl:16s} n={n:5d}  land_fraction>0: {_fmt(lf_ok,0)}%  "
-                  f"landfall_lat non-NaN: {_fmt(land_ok,0)}%")
+            lf_ok = (
+                (sub["land_fraction"] > 0).mean() * 100 if "land_fraction" in sub else float("nan")
+            )
+            land_ok = (
+                sub["landfall_lat"].notna().mean() * 100 if "landfall_lat" in sub else float("nan")
+            )
+            print(
+                f"    {lbl:16s} n={n:5d}  land_fraction>0: {_fmt(lf_ok, 0)}%  "
+                f"landfall_lat non-NaN: {_fmt(land_ok, 0)}%"
+            )
     else:
         print("    (observational_events parquet not present — skipping event-level sanity)")
 
     # ---- per-window table --------------------------------------------------
-    print("\n    window           n_events  intensity (q05–q95)        footprint   duration (q05–q95)")
+    print(
+        "\n    window           n_events  intensity (q05–q95)        footprint   duration (q05–q95)"
+    )
     for k, lbl in present:
         r = pc.loc[k]
-        print(f"    {lbl:16s} {int(r['n_events']):6d}   "
-              f"{_fmt(r.get('mean_intensity'))} ({_fmt(r.get('intensity_q05'))}"
-              f"–{_fmt(r.get('intensity_q95'))})   "
-              f"{_fmt(r.get('mean_footprint_km2')/1e6 if pd.notna(r.get('mean_footprint_km2')) else None,2)}e6   "
-              f"{_fmt(r.get('mean_duration_h'))} ({_fmt(r.get('duration_q05'))}"
-              f"–{_fmt(r.get('duration_q95'))})")
+        print(
+            f"    {lbl:16s} {int(r['n_events']):6d}   "
+            f"{_fmt(r.get('mean_intensity'))} ({_fmt(r.get('intensity_q05'))}"
+            f"–{_fmt(r.get('intensity_q95'))})   "
+            f"{_fmt(r.get('mean_footprint_km2') / 1e6 if pd.notna(r.get('mean_footprint_km2')) else None, 2)}e6   "
+            f"{_fmt(r.get('mean_duration_h'))} ({_fmt(r.get('duration_q05'))}"
+            f"–{_fmt(r.get('duration_q95'))})"
+        )
 
     if len(keys) < 2:
         print("\n  Only one window present — the contrast needs >=2. Verdict deferred.")
@@ -128,18 +138,23 @@ def main() -> int:
 
     # ---- 2. order ----------------------------------------------------------
     seq = [intensity[k] for k in keys]
-    monotonic = all(b >= a for a, b in zip(seq, seq[1:]))
+    monotonic = all(b >= a for a, b in itertools.pairwise(seq))
     print("\n[2] ORDER (mean intensity, kg m⁻¹ s⁻¹)")
-    print("    " + "  ->  ".join(f"{intensity[k]:.1f}" for k in keys)
-          + f"   {'monotonic ↑' if monotonic else 'NOT monotonic'}")
+    print(
+        "    "
+        + "  ->  ".join(f"{intensity[k]:.1f}" for k in keys)
+        + f"   {'monotonic ↑' if monotonic else 'NOT monotonic'}"
+    )
 
     # ---- 3. strength (band separation) ------------------------------------
     print("\n[3] STRENGTH (90% bootstrap-band separation)")
     sep = {}
-    for a, b in zip(keys, keys[1:]):
+    for a, b in itertools.pairwise(keys):
         ok = _bands_separate(
-            float(pc.loc[b, "intensity_q05"]), float(pc.loc[b, "intensity_q95"]),
-            float(pc.loc[a, "intensity_q05"]), float(pc.loc[a, "intensity_q95"]),
+            float(pc.loc[b, "intensity_q05"]),
+            float(pc.loc[b, "intensity_q95"]),
+            float(pc.loc[a, "intensity_q05"]),
+            float(pc.loc[a, "intensity_q95"]),
         )
         sep[(a, b)] = ok
         d = intensity[b] - intensity[a]
@@ -154,16 +169,21 @@ def main() -> int:
         m = col(metric)
         if len(m) == len(keys):
             mseq = [m[k] for k in keys]
-            mono = all(y >= x for x, y in zip(mseq, mseq[1:]))
+            mono = all(y >= x for x, y in itertools.pairwise(mseq))
             breadth_agree = breadth_agree and mono
-            print(f"    {label:9s}: " + "  ->  ".join(f"{v:.3g}" for v in mseq)
-                  + f"   {'↑' if mono else 'mixed'}")
+            print(
+                f"    {label:9s}: "
+                + "  ->  ".join(f"{v:.3g}" for v in mseq)
+                + f"   {'↑' if mono else 'mixed'}"
+            )
 
     # ---- verdict -----------------------------------------------------------
     # Longest-baseline contrast = first vs last present window.
     headline_sep = _bands_separate(
-        float(pc.loc[keys[-1], "intensity_q05"]), float(pc.loc[keys[-1], "intensity_q95"]),
-        float(pc.loc[keys[0], "intensity_q05"]), float(pc.loc[keys[0], "intensity_q95"]),
+        float(pc.loc[keys[-1], "intensity_q05"]),
+        float(pc.loc[keys[-1], "intensity_q95"]),
+        float(pc.loc[keys[0], "intensity_q05"]),
+        float(pc.loc[keys[0], "intensity_q95"]),
     )
     any_sep = any(sep.values())
     total_delta = intensity[keys[-1]] - intensity[keys[0]]
@@ -176,14 +196,18 @@ def main() -> int:
         gloss = "no band separates and the end-to-end change is small (<5 kg m⁻¹ s⁻¹)."
     else:
         verdict = "MIXED"
-        gloss = ("intensity and breadth/significance disagree — "
-                 "non-monotonic, or a shift without band separation.")
+        gloss = (
+            "intensity and breadth/significance disagree — "
+            "non-monotonic, or a shift without band separation."
+        )
 
     print("\n" + "=" * 64)
     print(f" VERDICT: {verdict}")
     print(f"   {gloss}")
-    print(f"   end-to-end Δintensity = {total_delta:+.1f} kg m⁻¹ s⁻¹"
-          f"   (breadth agrees: {breadth_agree})")
+    print(
+        f"   end-to-end Δintensity = {total_delta:+.1f} kg m⁻¹ s⁻¹"
+        f"   (breadth agrees: {breadth_agree})"
+    )
     print("=" * 64)
     return 0
 

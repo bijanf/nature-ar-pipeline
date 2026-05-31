@@ -130,6 +130,7 @@ def _open_local_netcdf_cache(root: Path, years: set[int] | None = None) -> xr.Da
     caller's window avoids globbing files from other windows that may still be
     mid-download in the shared cache dir.
     """
+
     def _in_years(paths: list[Path]) -> list[Path]:
         if years is None:
             return paths
@@ -140,8 +141,7 @@ def _open_local_netcdf_cache(root: Path, years: set[int] | None = None) -> xr.Da
     static_file = root / "static.nc"
     if not pl_files:
         raise FileNotFoundError(
-            f"No *_pl.nc files under {root}"
-            + (f" for years {sorted(years)}" if years else "")
+            f"No *_pl.nc files under {root}" + (f" for years {sorted(years)}" if years else "")
         )
 
     pl = xr.open_mfdataset(
@@ -149,7 +149,9 @@ def _open_local_netcdf_cache(root: Path, years: set[int] | None = None) -> xr.Da
         combine="by_coords",
         chunks={},
         engine="netcdf4",
-    ).rename({k: v for k, v in _CDS_PL_RENAME.items() if k in xr.open_dataset(pl_files[0]).data_vars})
+    ).rename(
+        {k: v for k, v in _CDS_PL_RENAME.items() if k in xr.open_dataset(pl_files[0]).data_vars}
+    )
 
     if sfc_files:
         sfc = xr.open_mfdataset(
@@ -157,7 +159,13 @@ def _open_local_netcdf_cache(root: Path, years: set[int] | None = None) -> xr.Da
             combine="by_coords",
             chunks={},
             engine="netcdf4",
-        ).rename({k: v for k, v in _CDS_SFC_RENAME.items() if k in xr.open_dataset(sfc_files[0]).data_vars})
+        ).rename(
+            {
+                k: v
+                for k, v in _CDS_SFC_RENAME.items()
+                if k in xr.open_dataset(sfc_files[0]).data_vars
+            }
+        )
         merged = xr.merge([pl, sfc], compat="override")
     else:
         merged = pl
@@ -218,7 +226,9 @@ def _open_local_netcdf_cache(root: Path, years: set[int] | None = None) -> xr.Da
 
     if static_file.exists():
         static = xr.open_dataset(str(static_file), engine="netcdf4")
-        static = static.rename({k: v for k, v in _CDS_STATIC_RENAME.items() if k in static.data_vars})
+        static = static.rename(
+            {k: v for k, v in _CDS_STATIC_RENAME.items() if k in static.data_vars}
+        )
         if "valid_time" in static.dims:
             static = static.isel(valid_time=0).drop_vars("valid_time", errors="ignore")
         if "time" in static.dims:

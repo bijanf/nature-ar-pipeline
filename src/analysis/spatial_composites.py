@@ -33,8 +33,8 @@ import numpy as np
 import xarray as xr
 
 from src import config
-from src.features import physics_pipeline
 from src.analysis.period_contrast import _open_raw_era5
+from src.features import physics_pipeline
 
 _G = 9.80665
 
@@ -72,8 +72,8 @@ def _window_time_means(period: tuple[str, str]) -> xr.Dataset:
         "qbar": q,
         "ubar": u,
         "vbar": v,
-        "tbar": t,                 # mean temperature per level -> Clausius-Clapeyron ΔT
-        "zbar": z,                 # geopotential per level -> large-scale circulation
+        "tbar": t,  # mean temperature per level -> Clausius-Clapeyron ΔT
+        "zbar": z,  # geopotential per level -> large-scale circulation
         "qu_bar": q * u,
         "qv_bar": q * v,
         "ivt": ivt_ds["ivt"],
@@ -85,7 +85,7 @@ def _window_time_means(period: tuple[str, str]) -> xr.Dataset:
     y0, y1 = int(period[0][:4]), int(period[1][:4])
     acc: dict[str, xr.DataArray] = {}
     n = 0
-    ivt_years: list[xr.DataArray] = []          # per-year annual-mean IVT for significance
+    ivt_years: list[xr.DataArray] = []  # per-year annual-mean IVT for significance
     for y in range(y0, y1 + 1):
         yr = slice(f"{y}-01-01", f"{y}-12-31")
         nt = int(ds.sel(time=yr).sizes.get("time", 0))
@@ -95,8 +95,13 @@ def _window_time_means(period: tuple[str, str]) -> xr.Dataset:
             s = da.sel(time=yr).sum("time").compute()
             acc[name] = s if name not in acc else acc[name] + s
         ivt_years.append(
-            ivt_ds["ivt"].sel(time=yr).mean("time").compute()
-            .expand_dims(year=[y]).astype("float32"))
+            ivt_ds["ivt"]
+            .sel(time=yr)
+            .mean("time")
+            .compute()
+            .expand_dims(year=[y])
+            .astype("float32")
+        )
         n += nt
 
     out = {name: (acc[name] / n).astype("float32") for name in acc}
@@ -138,8 +143,12 @@ def run(periods=None, out_dir=None) -> list:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--periods", nargs="+", default=None,
-                    help="Subset of period names (default: all observational windows).")
+    ap.add_argument(
+        "--periods",
+        nargs="+",
+        default=None,
+        help="Subset of period names (default: all observational windows).",
+    )
     args = ap.parse_args()
     if args.periods:
         periods = [(n, p) for n, p in config.OBSERVATIONAL_PERIODS if n in args.periods]

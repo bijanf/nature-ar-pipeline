@@ -42,9 +42,7 @@ from src.features import physics_pipeline
 dask.config.set(scheduler="synchronous")
 
 
-_VARS = list(physics_pipeline.required_era5_vars()) + [
-    config.ERA5_SURFACE_VARS["tp"],
-]
+_VARS = [*list(physics_pipeline.required_era5_vars()), config.ERA5_SURFACE_VARS["tp"]]
 
 
 def stage_year(year: int, out_root: Path) -> Path:

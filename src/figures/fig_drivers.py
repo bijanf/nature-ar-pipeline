@@ -35,7 +35,7 @@ import numpy as np
 import xarray as xr
 
 from src import config
-from src.figures._style import apply_nature_style, COL_DOUBLE_IN
+from src.figures._style import COL_DOUBLE_IN, apply_nature_style
 
 _G = 9.80665
 _WINDOW_LABEL = {
@@ -79,7 +79,7 @@ def plot(composites_path: Path, out_path: Path) -> Path:
     iwv = {w: _iwv(g[w]["qbar"]) for w in wins}
     ivt = {w: g[w]["ivt"] for w in wins}
 
-    a, b = wins[0], wins[-1]                 # pre-sat -> recent (longest baseline)
+    a, b = wins[0], wins[-1]  # pre-sat -> recent (longest baseline)
     d_total = ivt[b] - ivt[a]
     d_thermo = ivt[a] * (iwv[b] / iwv[a] - 1.0)
     d_dyn = d_total - d_thermo
@@ -93,16 +93,16 @@ def plot(composites_path: Path, out_path: Path) -> Path:
     ivt0 = _corridor_mean(ivt[a], ivt[a])
     iwv0 = _corridor_mean(iwv[a], ivt[a])
     iwv1 = _corridor_mean(iwv[b], ivt[a])
-    moist_pct = 100.0 * (iwv1 / iwv0 - 1.0)            # observed δIWV/IWV (%)
-    ivt_pct = 100.0 * cm_total / ivt0                 # observed δIVT/IVT (%)
+    moist_pct = 100.0 * (iwv1 / iwv0 - 1.0)  # observed δIWV/IWV (%)
+    ivt_pct = 100.0 * cm_total / ivt0  # observed δIVT/IVT (%)
     dT = None
     if "tbar" in g[a]:
         lev = "level" if "level" in g[a]["tbar"].dims else "pressure_level"
         t0 = _corridor_mean(g[a]["tbar"].sel({lev: 850}), ivt[a])
         t1 = _corridor_mean(g[b]["tbar"].sel({lev: 850}), ivt[a])
-        dT = t1 - t0                                   # 850-hPa warming (K)
+        dT = t1 - t0  # 850-hPa warming (K)
     cc_rate = (moist_pct / dT) if dT else float("nan")  # implied %/K
-    cc_expected = 7.0 * dT if dT else float("nan")      # CC-predicted δIWV/IWV (%)
+    cc_expected = 7.0 * dT if dT else float("nan")  # CC-predicted δIWV/IWV (%)
 
     proj = ccrs.PlateCarree()
     lon0 = config.BBOX["lon_min"] - 360
@@ -126,20 +126,35 @@ def plot(composites_path: Path, out_path: Path) -> Path:
     for j, w in enumerate(wins):
         ax = fig.add_subplot(gs[0, j], projection=proj)
         _basemap(ax)
-        pcm = ax.pcolormesh(lons_m, lats, ivt[w].to_numpy(), transform=proj,
-                            cmap="YlGnBu", vmin=0, vmax=vmax, shading="auto")
+        pcm = ax.pcolormesh(
+            lons_m,
+            lats,
+            ivt[w].to_numpy(),
+            transform=proj,
+            cmap="YlGnBu",
+            vmin=0,
+            vmax=vmax,
+            shading="auto",
+        )
         st = 8
         # The pipeline stores IVT components with a flipped sign (harmless for
         # magnitude/detection); negate for physical transport direction (the
         # moist plume points onshore, eastward/northeastward).
-        ax.quiver(lons_m[::st], lats[::st],
-                  -g[w]["ivt_u"].to_numpy()[::st, ::st],
-                  -g[w]["ivt_v"].to_numpy()[::st, ::st],
-                  transform=proj, scale=2600, width=0.005, color="0.15")
-        ax.set_title(f"({chr(97+j)}) {_WINDOW_LABEL[w]}", fontsize=7)
+        ax.quiver(
+            lons_m[::st],
+            lats[::st],
+            -g[w]["ivt_u"].to_numpy()[::st, ::st],
+            -g[w]["ivt_v"].to_numpy()[::st, ::st],
+            transform=proj,
+            scale=2600,
+            width=0.005,
+            color="0.15",
+        )
+        ax.set_title(f"({chr(97 + j)}) {_WINDOW_LABEL[w]}", fontsize=8)
         if j == len(wins) - 1:
             cb = fig.colorbar(pcm, ax=ax, fraction=0.046, pad=0.03)
-            cb.set_label("mean IVT (kg m$^{-1}$ s$^{-1}$)", fontsize=6)
+            cb.set_label("mean IVT (kg m$^{-1}$ s$^{-1}$)", fontsize=7.5)
+            cb.ax.tick_params(labelsize=7)
 
     # Significance of the total change: Welch t-test on per-year annual-mean IVT
     # (recent vs pre-sat). Stipple where NOT significant, so the eye trusts the
@@ -147,6 +162,7 @@ def plot(composites_path: Path, out_path: Path) -> Path:
     nonsig = None
     try:
         from scipy.stats import ttest_ind
+
         py0 = xr.open_dataset(config.CACHE_DIR / f"spatial_peryear_{a}.nc")["ivt_annual"]
         py1 = xr.open_dataset(config.CACHE_DIR / f"spatial_peryear_{b}.nc")["ivt_annual"]
         _, pval = ttest_ind(py1.to_numpy(), py0.to_numpy(), axis=0, equal_var=False)
@@ -159,43 +175,62 @@ def plot(composites_path: Path, out_path: Path) -> Path:
     dz500 = None
     if "zbar" in g[a]:
         zlev = "level" if "level" in g[a]["zbar"].dims else "pressure_level"
-        dz500 = ((g[b]["zbar"] - g[a]["zbar"]).sel({zlev: 500}) / _G)
+        dz500 = (g[b]["zbar"] - g[a]["zbar"]).sel({zlev: 500}) / _G
 
     # --- Row 2: change + thermodynamic + dynamic -----------------------------
     dmax = float(np.nanpercentile(np.abs(d_total.to_numpy()), 99))
     panels = [
-        (d_total, f"(d) Total change\n(recent − pre-sat), corridor +{cm_total:.0f}"),
-        (d_thermo, f"(e) Thermodynamic\n(moisture/CC), +{cm_thermo:.0f}"),
-        (d_dyn, f"(f) Dynamic + Δz$_{{500}}$\n(circulation), {cm_dyn:+.0f}"),
+        (d_total, "(d) Total change"),
+        (d_thermo, "(e) Thermodynamic"),
+        (d_dyn, "(f) Dynamic"),
     ]
     for j, (field, title) in enumerate(panels):
         ax = fig.add_subplot(gs[1, j], projection=proj)
         _basemap(ax)
-        pcm = ax.pcolormesh(lons_m, lats, field.to_numpy(), transform=proj,
-                            cmap="RdBu_r", vmin=-dmax, vmax=dmax, shading="auto")
+        pcm = ax.pcolormesh(
+            lons_m,
+            lats,
+            field.to_numpy(),
+            transform=proj,
+            cmap="RdBu_r",
+            vmin=-dmax,
+            vmax=dmax,
+            shading="auto",
+        )
         if j == 0 and nonsig is not None:
             yy, xx = np.where(nonsig)
-            ax.scatter(lons_m[xx][::6], lats[yy][::6], s=0.6, c="0.35",
-                       alpha=0.55, marker=".", linewidths=0, transform=proj, zorder=4)
+            ax.scatter(
+                lons_m[xx][::6],
+                lats[yy][::6],
+                s=0.6,
+                c="0.35",
+                alpha=0.55,
+                marker=".",
+                linewidths=0,
+                transform=proj,
+                zorder=4,
+            )
         if j == 2 and dz500 is not None:
-            cs = ax.contour(lons_m, lats, dz500.to_numpy(), levels=7,
-                            colors="k", linewidths=0.5, transform=proj, zorder=5)
-            ax.clabel(cs, inline=True, fontsize=4, fmt="%.0f")
-        ax.set_title(title, fontsize=7)
+            cs = ax.contour(
+                lons_m,
+                lats,
+                dz500.to_numpy(),
+                levels=7,
+                colors="k",
+                linewidths=0.5,
+                transform=proj,
+                zorder=5,
+            )
+            ax.clabel(cs, inline=True, fontsize=7, fmt="%.0f")
+        ax.set_title(title, fontsize=8)
         if j == len(panels) - 1:
             cb = fig.colorbar(pcm, ax=ax, fraction=0.046, pad=0.03)
-            cb.set_label("ΔIVT (kg m$^{-1}$ s$^{-1}$)", fontsize=6)
+            cb.set_label("ΔIVT (kg m$^{-1}$ s$^{-1}$)", fontsize=7.5)
+            cb.ax.tick_params(labelsize=7)
 
     thermo_pct = 100 * cm_thermo / cm_total if cm_total else float("nan")
-    cc_str = ""
-    if dT and np.isfinite(dT):
-        cc_str = (f"  |  +{dT:.2f} K warming → moisture +{moist_pct:.1f}% "
-                  f"({cc_rate:.1f}%/K vs CC 7%/K)")
-    fig.suptitle(
-        f"Corridor IVT {cm_total:+.0f} kg m$^{{-1}}$ s$^{{-1}}$ "
-        f"({ivt_pct:+.1f}%): thermodynamic {thermo_pct:.0f}%, dynamic {100 - thermo_pct:.0f}%"
-        + cc_str,
-        fontsize=7.5, y=0.995)
+    # (no in-figure suptitle; corridor change, thermodynamic/dynamic shares and the
+    # Clausius–Clapeyron numbers are stated in the caption and Results text.)
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out_path, bbox_inches="tight")
@@ -204,6 +239,7 @@ def plot(composites_path: Path, out_path: Path) -> Path:
     # Sidecar so the manuscript numbers are read from the same computation that
     # made the figure (no hand-copied values).
     import json
+
     sidecar = {
         "delta_ivt_corridor": round(cm_total, 1),
         "delta_ivt_pct": round(ivt_pct, 1),
@@ -215,20 +251,22 @@ def plot(composites_path: Path, out_path: Path) -> Path:
     }
     (config.CACHE_DIR / "driver_attribution.json").write_text(json.dumps(sidecar, indent=2))
     print(f"wrote {out_path}")
-    print(f"corridor ΔIVT total={cm_total:.1f} ({ivt_pct:+.1f}%), "
-          f"thermo={cm_thermo:.1f} ({thermo_pct:.0f}%), dyn={cm_dyn:.1f}")
+    print(
+        f"corridor ΔIVT total={cm_total:.1f} ({ivt_pct:+.1f}%), "
+        f"thermo={cm_thermo:.1f} ({thermo_pct:.0f}%), dyn={cm_dyn:.1f}"
+    )
     if dT and np.isfinite(dT):
-        print(f"CC test: ΔT(850)={dT:.2f}K, δIWV/IWV={moist_pct:.1f}% "
-              f"→ {cc_rate:.1f}%/K (CC≈7%/K); CC-expected moisture {cc_expected:.1f}%")
+        print(
+            f"CC test: ΔT(850)={dT:.2f}K, δIWV/IWV={moist_pct:.1f}% "
+            f"→ {cc_rate:.1f}%/K (CC≈7%/K); CC-expected moisture {cc_expected:.1f}%"
+        )
     return out_path
 
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--composites", type=Path,
-                    default=config.CACHE_DIR / "spatial_composites.nc")
-    ap.add_argument("--out", type=Path,
-                    default=Path("figures") / "fig_drivers.pdf")
+    ap.add_argument("--composites", type=Path, default=config.CACHE_DIR / "spatial_composites.nc")
+    ap.add_argument("--out", type=Path, default=Path("figures") / "fig_drivers.pdf")
     args = ap.parse_args()
     plot(args.composites, args.out)
 

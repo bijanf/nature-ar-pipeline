@@ -109,8 +109,14 @@ def _plot_observed_only(observed: pd.DataFrame) -> plt.Figure:
     lo = obs["intensity_q05"].to_numpy()
     hi = obs["intensity_q95"].to_numpy()
     ax.errorbar(
-        x, med, yerr=[np.maximum(med - lo, 0), np.maximum(hi - med, 0)],
-        fmt="o", markersize=3, color=_OBS_COLOUR, capsize=2, lw=0.6,
+        x,
+        med,
+        yerr=[np.maximum(med - lo, 0), np.maximum(hi - med, 0)],
+        fmt="o",
+        markersize=3,
+        color=_OBS_COLOUR,
+        capsize=2,
+        lw=0.6,
     )
     ax.set_ylabel("mean AR intensity (kg m⁻¹ s⁻¹)")
     ax.set_title("(b) AR intensity")
@@ -118,8 +124,11 @@ def _plot_observed_only(observed: pd.DataFrame) -> plt.Figure:
     # (c) mean footprint (no bootstrap band in the summary)
     ax = axes[1, 0]
     ax.bar(
-        x, obs["mean_footprint_km2"].to_numpy() / 1e6,
-        color=_OBS_COLOUR, edgecolor="black", linewidth=0.4,
+        x,
+        obs["mean_footprint_km2"].to_numpy() / 1e6,
+        color=_OBS_COLOUR,
+        edgecolor="black",
+        linewidth=0.4,
     )
     ax.set_ylabel("mean footprint (10⁶ km²)")
     ax.set_title("(c) AR footprint")
@@ -130,8 +139,14 @@ def _plot_observed_only(observed: pd.DataFrame) -> plt.Figure:
     dlo = obs["duration_q05"].to_numpy()
     dhi = obs["duration_q95"].to_numpy()
     ax.errorbar(
-        x, dmed, yerr=[np.maximum(dmed - dlo, 0), np.maximum(dhi - dmed, 0)],
-        fmt="o", markersize=3, color=_OBS_COLOUR, capsize=2, lw=0.6,
+        x,
+        dmed,
+        yerr=[np.maximum(dmed - dlo, 0), np.maximum(dhi - dmed, 0)],
+        fmt="o",
+        markersize=3,
+        color=_OBS_COLOUR,
+        capsize=2,
+        lw=0.6,
     )
     ax.set_ylabel("mean duration (h)")
     ax.set_title("(d) AR duration")
@@ -254,7 +269,8 @@ def plot(
     ax.set_xticks(x)
     ax.set_xticklabels(obs_ticks + ssp_ticks)
     ax.set_ylabel(
-        "mean AR intensity (kg m⁻¹ s⁻¹)" if observed_only
+        "mean AR intensity (kg m⁻¹ s⁻¹)"
+        if observed_only
         else "mean AR intensity / precip\n(observed / projected)"
     )
     ax.set_title("(b) Trajectory of AR intensity")

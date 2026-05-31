@@ -274,9 +274,9 @@ def main() -> None:
         default=["pl"],
         choices=("pl", "sfc", "tp"),
         help="Subset of fetch kinds: pl (pressure-level), sfc (surface pressure — "
-             "not consumed by any feature, kept as an opt-in), tp (precip — read "
-             "from PIK climate_data_central by default, opt in only if PIK mirror "
-             "is unavailable).",
+        "not consumed by any feature, kept as an opt-in), tp (precip — read "
+        "from PIK climate_data_central by default, opt in only if PIK mirror "
+        "is unavailable).",
     )
     args = parser.parse_args()
 
