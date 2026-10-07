@@ -73,7 +73,8 @@ def draw(out_path):
             ax = fig.add_subplot(2, 2, row * 2 + col + 1, projection=ccrs.PlateCarree(central_longitude=cl))
             ax.set_extent([lon0, lon1 if lon1 > lon0 else lon1 + 360, lat0, lat1], crs=ccrs.PlateCarree())
             ax.coastlines(linewidth=0.4, color="0.25")
-            gl = ax.gridlines(draw_labels=True, linewidth=0.2, color="0.6", xlocs=range(-180, 181, 10), ylocs=range(-80, 81, 10))
+            gl = ax.gridlines(draw_labels=True, linewidth=0.15, color="0.75", alpha=0.6, linestyle=":",
+                              xlocs=range(-180, 181, 10), ylocs=range(-80, 81, 10))
             gl.top_labels = gl.right_labels = False
             gl.xlabel_style = gl.ylabel_style = {"size": 5}
             if col == 0:

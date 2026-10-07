@@ -49,11 +49,10 @@ def draw(npz, out):
         ax.set_yticks([])
         ax.text(0.03, 0.95, SHORT[name], transform=ax.transAxes, va="top", ha="left", fontsize=6.5)
         _panel_label(ax, letter)
-    for ax in axs[1]:
-        ax.set_xlabel("wind-change term (kg m$^{-1}$ s$^{-1}$)")
+    fig.supxlabel("wind-change term (kg m$^{-1}$ s$^{-1}$)", fontsize=7, y=0.11)
     h, lab = axs[0, 0].get_legend_handles_labels()
-    fig.legend(h, lab, ncol=3, frameon=False, loc="lower center", bbox_to_anchor=(0.5, -0.02))
-    fig.subplots_adjust(hspace=0.35, wspace=0.15, bottom=0.2)
+    fig.legend(h, lab, ncol=3, frameon=False, loc="lower center", bbox_to_anchor=(0.5, -0.01))
+    fig.subplots_adjust(hspace=0.4, wspace=0.18, bottom=0.2)
     fig.savefig(out)
     print("wrote", out)
 
