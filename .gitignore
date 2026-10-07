@@ -75,3 +75,7 @@ figures/*.jpeg
 
 # OS / misc
 Thumbs.db
+
+# Working notes never enter the repository
+*.md
+!README.md
