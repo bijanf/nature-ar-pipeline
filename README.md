@@ -26,6 +26,7 @@ python -m src.analysis.indices_era5
 python -m src.analysis.index_regression
 python -m src.analysis.cmip6_detection
 python -m src.analysis.cmip6_projection
+python -m src.analysis.cmip6_trend_test RESULTS_DIR
 python -m src.analysis.bootstrap_distributions
 ```
 

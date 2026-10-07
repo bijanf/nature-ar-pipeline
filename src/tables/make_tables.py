@@ -6,6 +6,7 @@ Writes into the manuscript tables folder:
   tab_trends.tex         Hamed-Rao trends of the yearly contributions (supplement)
   tab_sensitivity.tex    wind term for every period pair (supplement)
   tab_seasons.tex        seasonal terms (supplement)
+  tab_cmip6_trends.tex   observed trend of the wind contribution against the CMIP6 members (supplement)
 Captions are written by the authors; the bodies use the Copernicus rules
 (\tophline, \middlehline, \bottomhline).
 
@@ -95,6 +96,26 @@ def seasons_table(res, out: Path):
     out.write_text("\n".join(lines) + "\n")
 
 
+def trend_test_table(res, out: Path):
+    """Observed trend of the yearly wind contribution against the CMIP6 members (cmip6_trend_test.json)."""
+    large = res["large"]
+    head = " & ".join(large)
+    lines = [r"\begin{tabular}{lrrrrrr}", r"\tophline",
+             f"Corridor & ERA5 & {head} & All members & Members \\\\", r"\middlehline"]
+    for n in ORDER:
+        r = res[n]["wind_slope_per_decade"]
+        cells = [f"{fmt(r['obs'], 2)}{sig(r['obs_p'])}"]
+        for m in large:
+            e = r[m]
+            cells.append(f"{fmt(e['mean'], 2)} $\\pm$ {e['sd']:.2f} ({100 * e['frac_as_extreme']:.0f}\\,\\%)")
+        mm = r["multi_model"]
+        cells.append(f"{fmt(mm['weighted_mean'], 2)} [{fmt(mm['p05'], 2)}, {fmt(mm['p95'], 2)}]")
+        cells.append(str(mm["n_members_as_extreme"]))
+        lines.append(f"{nm(n)} & " + " & ".join(cells) + " \\\\")
+    lines += [r"\bottomhline", r"\end{tabular}"]
+    out.write_text("\n".join(lines) + "\n")
+
+
 def main():
     res_dir, out_dir = Path(sys.argv[1]), Path(sys.argv[2])
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -104,6 +125,7 @@ def main():
     trends_table(h, out_dir / "tab_trends.tex")
     sensitivity_table(json.load(open(res_dir / "fullcolumn_sensitivity.json"))["matrix"], out_dir / "tab_sensitivity.tex")
     seasons_table(json.load(open(res_dir / "fullcolumn_seasons.json")), out_dir / "tab_seasons.tex")
+    trend_test_table(json.load(open(res_dir / "cmip6_trend_test.json")), out_dir / "tab_cmip6_trends.tex")
     print("wrote tables to", out_dir)
 
 

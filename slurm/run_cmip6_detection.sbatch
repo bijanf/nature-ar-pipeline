@@ -16,6 +16,7 @@ export PYTHONWARNINGS=ignore OMP_NUM_THREADS=4 OPENBLAS_NUM_THREADS=4 MKL_NUM_TH
 set -e
 D=/p/projects/poem/fallah/nature_ar_data
 python -m src.analysis.cmip6_detection
+python -m src.analysis.cmip6_trend_test $D/results_esd
 mkdir -p figures/esd
 python -m src.figures.fig_cmip6_detection $D/results_esd/cmip6_members.json figures/esd/fig06_cmip6.pdf
 echo CMIP6_DONE
