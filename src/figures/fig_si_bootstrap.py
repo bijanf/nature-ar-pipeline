@@ -42,7 +42,7 @@ def draw(npz, out):
             v = npz[f"{k}__b{b}"][:, 0]
             lo, hi = np.percentile(v, [2.5, 97.5])
             ax.plot(grid, gaussian_kde(v)(grid), color=COL["wind"], alpha=SHADE[b], linestyle=LS[b], linewidth=1.0,
-                    label=f"block {b} yr" + (" (i.i.d. years)" if b == 1 else ""))
+                    label=f"block {b} yr" + (" (independent years)" if b == 1 else ""))
             ax.plot([lo, hi], [-0.004 * b] * 2, color=COL["wind"], alpha=SHADE[b], linewidth=1.2)
         ax.axvline(point, color="black", linewidth=0.8)
         ax.axvline(0, color="0.5", linewidth=0.5)
