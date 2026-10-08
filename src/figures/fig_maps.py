@@ -80,6 +80,8 @@ def _boxes(ax, color="black"):
 
 def draw(out_path: str):
     _style()
+    plt.rcParams["hatch.linewidth"] = 0.25
+    plt.rcParams["hatch.color"] = "0.25"
     f = load()
     proj = ccrs.Robinson(central_longitude=200)
     fig, axs = plt.subplots(2, 2, figsize=(183 * MM, 100 * MM), subplot_kw={"projection": proj})
@@ -92,6 +94,15 @@ def draw(out_path: str):
         lon, lat = da.longitude.values, da.latitude.values
         im = ax.pcolormesh(lon, lat, da.values, cmap=cmap, vmin=vmin, vmax=vmax, transform=ccrs.PlateCarree(),
                            shading="auto", rasterized=True)
+        if key in ("dmag", "dtcwv"):
+            # black-and-white reading: negative values hatched, zero line drawn
+            ax.contourf(lon, lat, da.values, levels=[-1e9, 0.0], colors="none", hatches=["////"],
+                        transform=ccrs.PlateCarree())
+            ax.contour(lon, lat, da.values, levels=[0.0], colors="0.2", linewidths=0.25, transform=ccrs.PlateCarree())
+        if key == "dz500":
+            # black-and-white reading: height-change contours, dashed where negative
+            ax.contour(lon, lat, da.values, levels=[-20, -10, 10, 20], colors="black", linewidths=0.35,
+                       linestyles=["dashed", "dashed", "solid", "solid"], transform=ccrs.PlateCarree())
         ax.coastlines(linewidth=0.3, color="0.3")
         ax.set_global()
         _boxes(ax, "black" if key != "mag1" else "white")

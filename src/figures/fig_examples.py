@@ -62,6 +62,8 @@ def load():
 
 def draw(out_path):
     _style()
+    plt.rcParams["hatch.linewidth"] = 0.25
+    plt.rcParams["hatch.color"] = "0.25"
     f = load()
     fig = plt.figure(figsize=(183 * MM, 115 * MM))
     letters = iter("abcd")
@@ -91,6 +93,9 @@ def draw(out_path):
                 da = _sector(f["dmag"], ext)
                 im = ax.pcolormesh(da.longitude, da.latitude, da.values, cmap="RdBu_r", vmin=-40, vmax=40,
                                    transform=ccrs.PlateCarree(), shading="auto", rasterized=True)
+                # black-and-white reading: negative transport change hatched
+                ax.contourf(da.longitude, da.latitude, da.values, levels=[-1e9, 0.0], colors="none", hatches=["////"],
+                            transform=ccrs.PlateCarree())
                 dz = _sector(f["dz"], ext)
                 levels = np.arange(-30, 31, 4)
                 levels = levels[levels != 0]
